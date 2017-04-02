@@ -38,6 +38,9 @@ public:
     }
 
     void run(const string& initial, int num_iterations, int size_of_buffer=200) {
+        
+        clock_t t0 = clock();
+        
         cout << "Running " << initial << "\n----------------\n";
         
         int buffer[2][size_of_buffer];
@@ -66,6 +69,8 @@ public:
         }
     
         cout << "Done----------------\n";
+        clock_t t = clock() - t0;
+        cout << "(Took " << (((float)t)/CLOCKS_PER_SEC) << "ms\n";
     }
 };
 
@@ -79,9 +84,9 @@ int main(int argc, char *argv[]) {
                         10,"3311100320");
     myrule.print();
 
-     myrule.run("1", 100);
-     myrule.run("23", 100);
-     myrule.run("11", 100);
+     myrule.run("1", 1000);
+     myrule.run("23", 1000);
+     myrule.run("11", 1000);
 
 
     cout << "Bye-bye!\n";
