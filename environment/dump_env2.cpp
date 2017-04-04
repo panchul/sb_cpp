@@ -15,14 +15,3 @@ int main(int argc, char **argv, char **envp)
      return 0;
 }
 
-
-//int main()
-//{
-//    char **ep = environ;
-//    char *p;
-//    while ((p = *ep++))
-//         printf("%s\n", p);
-//    return 0;
-//}
-
-
