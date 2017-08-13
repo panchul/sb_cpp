@@ -1,6 +1,6 @@
-# sb_cpp
-
 ## UNDER CONSTRUCTION
+
+# sb_cpp
 
 C/C++ sandbox for variety of templates, tutorial snippets, etc.
 
@@ -11,18 +11,30 @@ The ```/doc``` folder of the ```workspace``` repo has the documentation.
 
 I will gradually migrate the notes I have to this repository. To keep track of what I am adding:
 
+---
 
 ## Generic
 
-** TODO **
+- cellular_automata
+- containers
+- environment
+- lambdas
+- strings
+...
+
+---
 
 ## Linux/UNIX networking
 
-** TODO **
+- networking_cli_serv
+  Simple daytime server and client
+  
 
+---
 
 ## Graphics
 
 ** TODO **
 
+---
 
