@@ -28,6 +28,10 @@ I will gradually migrate the notes I have to this repository. To keep track of w
 
 - networking_cli_serv
   Simple daytime server and client
+- networking_web
+  Simple web server, listens on port 80 and generates a page with a timestamp.
+  Start the server, look in browser to 'localhost', do do ```$ curl localhost```
+  
   
 
 ---
