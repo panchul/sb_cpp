@@ -1,4 +1,7 @@
 
+
+#include <stdio.h>
+#include <string.h>
 #include <iostream>
 #include <string>
 #include <map>
@@ -6,6 +9,19 @@
 
 
 using namespace std;
+
+string color_code(int cell) {
+    switch(cell) {
+    case 0: return " "; // ".";
+    case 1: return "\033[1;31m1\033[0m";
+    case 2: return "\033[1;33m2\033[0m";
+    case 3: return "\033[1;34m3\033[0m";;
+    default: 
+        char buffer[10];
+        snprintf(buffer, 10, "%d", cell);
+        return buffer;    
+    }
+}
 
 class automata_rule {
     automata_rule(); // private so nobody uses this one.
@@ -57,7 +73,7 @@ public:
         
         while(num_iterations--) {
             for(int i=1;i<size_of_buffer-1;i++) {
-                cout << buffer[buffer_flag][i];
+                cout << color_code(buffer[buffer_flag][i]);
             
                 buffer[!buffer_flag][i] = rule_mapping[buffer[buffer_flag][i]
                                                        +buffer[buffer_flag][i-1]
