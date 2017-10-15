@@ -330,8 +330,8 @@ int main(int argc, char **argv)
 {
 	int					listenfd, connfd;
 	struct sockaddr_in	servaddr;
-	char				buff[MAXLINE];
-	char				buff2[MAXLINE];
+	char				buff[300*300*3];
+	char				buff2[300*300*3];
 	time_t				ticks;
 
 	listenfd = Socket(AF_INET, SOCK_STREAM, 0);
@@ -350,22 +350,78 @@ int main(int argc, char **argv)
 		connfd = Accept(listenfd, (SA *) NULL, NULL);
 
         ticks = time(NULL);
-        
+
+// .ppm  Does not work in browser for some reason.        
+
         snprintf(buff2, sizeof(buff2),
-            "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">"
-            "<html><body>%.24s\n"
-            "</body></html>\n\n", ctime(&ticks));
-    
+            "P6\n"
+            "# 24-bit ppm RGB\n"
+            "88 88 255\n");
+        
+        int offset=strlen(buff2);
+        
+        for(int x=0;x<88;x++)
+        for(int y=0;y<88;y++)
+        {
+            buff2[offset++] = x*y;
+            buff2[offset++] = x*y;
+            buff2[offset++] = x*y;
+        }
+
+        buff2[offset++] = '\n';
+
+//        snprintf(buff, sizeof(buff),
+//            "HTTP/1.x 200 OK\n"
+//            "Content-Type: image/x-portable-pixmap\n"
+//            "Cache-Control: max-age=0,public\n"
+//            "Content-Length: %d\n"
+//           "\n"
+//            ,
+//        offset);
         snprintf(buff, sizeof(buff),
             "HTTP/1.x 200 OK\n"
-            "Content-Type: text/html;charset=UTF-8\n"
+            "Content-Type: image/ppm\n"
             "Cache-Control: max-age=0,public\n"
             "Content-Length: %d\n"
             "\n"
-            "%s",
-        (int)strlen(buff2), buff2);
+            ,
+        offset);
+/*
+
+        snprintf(buff2, sizeof(buff2),
+            "BM\n"
+            "whatever the other headers are\n");
         
-        Write(connfd, buff, strlen(buff));
+        //https://en.wikipedia.org/wiki/BMP_file_format
+        
+        int offset=strlen(buff2);
+        
+        for(int x=0;x<200;x++)
+        for(int y=0;y<200;y++)
+        {
+            buff2[offset++] = x;
+            buff2[offset++] = x*y;
+            buff2[offset++] = y;
+        }
+
+        // NOT sure about 'x-portable-bitmap' - probably should be 'DIB' or something.
+        snprintf(buff, sizeof(buff),
+            "HTTP/1.x 200 OK\n"
+            "Content-Type: image/x-portable-pixmap\n"
+            "Cache-Control: max-age=0,public\n"
+            "Content-Length: %d\n"
+            "\n"
+            ,
+        offset);
+*/
+        int header_size = strlen(buff);
+        
+        memcpy(buff+header_size, buff2, offset);        
+
+//        printf("outputting %d bytes:\n---\n%s\n---\n", (int)strlen(buff2), buff2);
+//        printf("outputting %d bytes:\n---\n%s\n---\n", (int)strlen(buff), buff);
+        
+        Write(connfd, buff, header_size+offset);
 
 		Close(connfd);
 	}

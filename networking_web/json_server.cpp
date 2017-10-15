@@ -1,5 +1,10 @@
 // It is from Stevens's UNIX Network Programming book, had to drug in a bunch of wrappers to the actual snippet to work.
 
+// $ curl -s localhost | json_pp
+//{
+//  "timestamp" : "Fri Oct  6 23:23:41 2017"
+//}
+
 #include	<time.h>
 
 #include	<sys/types.h>	/* basic system data types */
@@ -330,8 +335,8 @@ int main(int argc, char **argv)
 {
 	int					listenfd, connfd;
 	struct sockaddr_in	servaddr;
-	char				buff[MAXLINE];
-	char				buff2[MAXLINE];
+	char				buff[MAXLINE*5];
+	char				buff2[MAXLINE*5];
 	time_t				ticks;
 
 	listenfd = Socket(AF_INET, SOCK_STREAM, 0);
@@ -352,19 +357,21 @@ int main(int argc, char **argv)
         ticks = time(NULL);
         
         snprintf(buff2, sizeof(buff2),
-            "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">"
-            "<html><body>%.24s\n"
-            "</body></html>\n\n", ctime(&ticks));
+            "{\"timestamp\":\"%.24s\"}"
+            , ctime(&ticks));
     
         snprintf(buff, sizeof(buff),
             "HTTP/1.x 200 OK\n"
-            "Content-Type: text/html;charset=UTF-8\n"
+            "Content-Type: application/json;charset=UTF-8\n"
             "Cache-Control: max-age=0,public\n"
             "Content-Length: %d\n"
             "\n"
             "%s",
         (int)strlen(buff2), buff2);
         
+//        printf("outputting %d bytes:\n---\n%s\n---\n", (int)strlen(buff2), buff2);
+//        printf("outputting %d bytes:\n---\n%s\n---\n", (int)strlen(buff), buff);
+                
         Write(connfd, buff, strlen(buff));
 
 		Close(connfd);
