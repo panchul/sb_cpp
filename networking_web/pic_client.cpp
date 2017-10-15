@@ -1,6 +1,8 @@
 // It is from Stevens's UNIX Network Programming book, had to drug in a bunch of wrappers to the actual snippet to work.
 
-#include	<time.h>
+//
+// $ ./a.out localhost
+
 
 #include	<sys/types.h>	/* basic system data types */
 #include	<sys/socket.h>	/* basic socket definitions */
@@ -27,10 +29,6 @@
 #define	MAXLINE		4096	/* max text line length */
 #define	MAXSOCKADDR  128	/* max socket address structure size */
 #define	BUFFSIZE	8192	/* buffer size for reads and writes */
-
-/* Following could be derived from SOMAXCONN in <sys/socket.h>, but many
-   kernels still #define it as 5, while actually supporting many more */
-#define	LISTENQ		1024	/* 2nd argument to listen() */
 
 #define	SA	struct sockaddr
 
@@ -267,107 +265,85 @@ Sock_ntop_host(const struct sockaddr *sa, socklen_t salen)
 	return(ptr);
 }
 
-int
-Accept(int fd, struct sockaddr *sa, socklen_t *salenptr)
-{
-	int		n;
 
-again:
-	if ( (n = accept(fd, sa, salenptr)) < 0) {
-#ifdef	EPROTO
-		if (errno == EPROTO || errno == ECONNABORTED)
-#else
-		if (errno == ECONNABORTED)
-#endif
-			goto again;
-		else
-			err_sys("accept error");
-	}
-	return(n);
-}
-
-void
-Write(int fd, void *ptr, size_t nbytes)
-{
-	if (write(fd, ptr, nbytes) != nbytes)
-		err_sys("write error");
-}
-
-/* include Socket */
-int
-Socket(int family, int type, int protocol)
-{
-	int		n;
-
-	if ( (n = socket(family, type, protocol)) < 0)
-		err_sys("socket error");
-	return(n);
-}
-
-void
-Bind(int fd, const struct sockaddr *sa, socklen_t salen)
-{
-	if (bind(fd, sa, salen) < 0)
-		err_sys("bind error");
-}
-
-/* include Listen */
-void
-Listen(int fd, int backlog)
-{
-	char	*ptr;
-
-		/*4can override 2nd argument with environment variable */
-	if ( (ptr = getenv("LISTENQ")) != NULL)
-		backlog = atoi(ptr);
-
-	if (listen(fd, backlog) < 0)
-		err_sys("listen error");
-}
-/* end Listen */
-
+/*
 int main(int argc, char **argv)
 {
-	int					listenfd, connfd;
-	struct sockaddr_in	servaddr;
-	char				buff[MAXLINE];
-	char				buff2[MAXLINE];
-	time_t				ticks;
+	int		sockfd, n, npend;
+	char	recvline[MAXLINE + 1];
+	socklen_t	len;
+	struct sockaddr	*sa;
 
-	listenfd = Socket(AF_INET, SOCK_STREAM, 0);
+	if (argc != 3) {
+		err_quit("usage: a.out <hostname or IPaddress> <service or port#>");
+	}
 
-	bzero(&servaddr, sizeof(servaddr));
-	servaddr.sin_family      = AF_INET;
-	servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	
-	servaddr.sin_port        = htons(80);
+	sockfd = Tcp_connect(argv[1], argv[2]);
 
-	Bind(listenfd, (SA *) &servaddr, sizeof(servaddr));
-
-	Listen(listenfd, LISTENQ);
+	sa = (sockaddr	*)Malloc(MAXSOCKADDR);
+	len = MAXSOCKADDR;
+	Getpeername(sockfd, sa, &len);
+	printf("connected to %s\n", Sock_ntop_host(sa, len));
 
 	for ( ; ; ) {
-		connfd = Accept(listenfd, (SA *) NULL, NULL);
+		if ( (n = Recv(sockfd, recvline, MAXLINE, MSG_PEEK)) == 0)
+			break;		// server closed connection
 
-        ticks = time(NULL);
-        
-        snprintf(buff2, sizeof(buff2),
-            "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">"
-            "<html><body>%.24s\n"
-            "</body></html>\n\n", ctime(&ticks));
-    
-        snprintf(buff, sizeof(buff),
-            "HTTP/1.x 200 OK\n"
-            "Content-Type: text/html;charset=UTF-8\n"
-            "Cache-Control: max-age=0,public\n"
-            "Content-Length: %d\n"
-            "\n"
-            "%s",
-        (int)strlen(buff2), buff2);
-        
-        Write(connfd, buff, strlen(buff));
+		//Ioctl(sockfd, FIONREAD, &npend);	// check FIONREAD support
+		//printf("%d bytes from PEEK, %d bytes pending\n", n, npend);
 
-		Close(connfd);
+		n = Read(sockfd, recvline, MAXLINE);
+		recvline[n] = 0;	// null terminate 
+		Fputs(recvline, stdout);
 	}
+	exit(0);
 }
+*/
 
+int
+main(int argc, char **argv)
+{
+	int					sockfd, n;
+	char				recvline[MAXLINE + 1];
+	struct sockaddr_in	servaddr;
+
+//	if (argc != 2)
+//		err_quit("usage: %s <IPaddress>", argv[0]);
+
+	if ( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+		err_sys("socket error");
+
+	bzero(&servaddr, sizeof(servaddr));
+	servaddr.sin_family = AF_INET;
+	
+	servaddr.sin_port   = htons(80); // htons(13);	// daytime server 
+	//servaddr.sin_port   = htons(37);	// time server    32 bits of data
+    	
+	if (inet_pton(AF_INET, "127.0.0.1" // argv[1]
+	, &servaddr.sin_addr) <= 0)
+		err_quit("inet_pton error for %s", "127.0.0.1"
+		//argv[1]
+		);
+
+	if (connect(sockfd, (SA *) &servaddr, sizeof(servaddr)) < 0)
+		err_sys("connect error");
+
+	while ( (n = read(sockfd, recvline, MAXLINE)) > 0) {
+		recvline[n] = 0;	// null terminate
+		
+//		printf("got %d bytes: ", n);
+//		for(int i=0;i<n;i++)
+//		printf("%02x ", (unsigned char)recvline[i]);
+//		printf("\n");
+//		for(int i=0;i<n;i++)
+//		printf("%c", (unsigned char)recvline[i]);
+//		printf("\n");
+		
+		if (fputs(recvline, stdout) == EOF)
+			err_sys("fputs error");
+	}
+	if (n < 0)
+		err_sys("read error");
+
+	exit(0);
+}
