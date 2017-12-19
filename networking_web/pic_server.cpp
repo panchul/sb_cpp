@@ -379,11 +379,11 @@ int main(int argc, char **argv)
 //            ,
 //        offset);
         snprintf(buff, sizeof(buff),
-            "HTTP/1.x 200 OK\n"
-            "Content-Type: image/ppm\n"
-            "Cache-Control: max-age=0,public\n"
-            "Content-Length: %d\n"
-            "\n"
+            "HTTP/1.1 200 OK\r\n"
+            // "Cache-Control: max-age=0,public\r\n"
+            "Content-Length: %d\r\n"
+            "Content-Type: image/ppm\r\n"
+            "\r\n"
             ,
         offset);
 /*
