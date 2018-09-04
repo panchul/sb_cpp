@@ -1,4 +1,11 @@
 
+
+// I have a script in k_merging_test subfolder, here's what it does:
+//  $ g++ ../k_merging.cpp
+//  $ echo test0  test1 test2 test3 test4 test_output.txt | ./a.out
+//  $ cat test_output.txt
+
+
 #include <iostream>
 #include <fstream>
 #include <string>
