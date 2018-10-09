@@ -1,5 +1,8 @@
 
 // compile it with g++
+//
+// $ g++ formatted_input.cpp
+//
 
 #include <string>
 #include <iostream>

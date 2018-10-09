@@ -1,8 +1,9 @@
 //
 // I think regexes are part of c++11, but here is how to use boos for that
 //
-
-// TODO: something is not working on Mac, compiled errors about architecture issues.
+//
+// $ g++ -I $BOOST_ROOT ${BOOST_ROOT_LIB}/libboost_regex.a formatted_input_regex.cpp
+//
 
 #include <boost/regex.hpp>
 #include <iostream>

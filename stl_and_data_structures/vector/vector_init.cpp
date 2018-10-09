@@ -1,5 +1,6 @@
 //
 // Neat tricks to conveniently initialize a vector.
+// $ g++ -std=c++1z vector_init.cpp 
 //
 
 #include <iostream>
@@ -33,7 +34,6 @@ template <typename T, size_t N>
 T* end(T(&arr)[N]) { return &arr[0]+N; }
 
 
-
 int main(int argc, char* argv[]) {
 
     std::vector<int> v = make_vector<int>() << 1 << 2 << 3;
@@ -53,7 +53,6 @@ int main(int argc, char* argv[]) {
     std::vector<int> v4(&vv[0], &vv[0]+2);
     std::cout << "v4 size is " << v4.size() << "; contains : " << v4[0] << ", etc." << std::endl;
 
-
     //--------------------------
     // 5 ( needs the templates above.
 
@@ -62,7 +61,6 @@ int main(int argc, char* argv[]) {
 
     std::cout << "v5 size is " << v5.size() << "; contains : " << v5[0] << ", etc." << std::endl;
     //-----------------------------------
-    
 
     return 0;
 }
