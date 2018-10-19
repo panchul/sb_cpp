@@ -4,6 +4,29 @@
 
 // $ g++ -std=c++1z shared_ptr_demo.cpp -lpthread 
 
+/*
+$ ./a.out 
+  Base::Base()
+  Derived::Derived()
+Created a shared Derived (as a pointer to Base)
+  p.get() = 0x7fd6fed00018, p.use_count() = 1
+Shared ownership between 3 threads and released
+ownership from main:
+  p.get() = 0x0, p.use_count() = 0
+local pointer in a thread:
+  lp.get() = 0x7fd6fed00018, lp.use_count() = 6
+ DoStuff from Derived
+local pointer in a thread:
+  lp.get() = 0x7fd6fed00018, lp.use_count() = 4
+ DoStuff from Derived
+local pointer in a thread:
+  lp.get() = 0x7fd6fed00018, lp.use_count() = 2
+ DoStuff from Derived
+  Derived::~Derived()
+  Base::~Base()
+All threads completed, the last one deleted Derived
+
+*/
 
 #include <iostream>
 #include <memory>
