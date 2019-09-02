@@ -1,9 +1,17 @@
 dweb
 ====
 
-A lightweight webserver for C programs, *with no dependencies* which should work on Linux, Unix, Mac OS, etc.  I'm planning to use it as a very small Web API, most likely hosted on a Raspberry Pi or a cheap router running OpenWrt, probably both :-).  I'm just trying to implement enough of the HTTP protocol to work with the main browsers, so if you're looking for a complete implementation of the HTTP protocol, then dweb is not what you want...
+A lightweight webserver for C programs, *with no dependencies* which should
+work on Linux, Unix, Mac OS, etc.  I'm planning to use it as a very small
+Web API, most likely hosted on a Raspberry Pi or a cheap router running OpenWrt,
+probably both :-).  I'm just trying to implement enough of the HTTP protocol to
+work with the main browsers, so if you're looking for a complete implementation
+of the HTTP protocol, then dweb is not what you want...
 
-The idea is to be able to serve dynamic web content from simple C programs, without having to write much extra code.  In fact, *dweb* is a single **C** source file, which is all you need to add to your project.  So the trivial example (serving a static page) looks like this:
+The idea is to be able to serve dynamic web content from simple C programs, without
+having to write much extra code.  In fact, *dweb* is a single **C** source file,
+which is all you need to add to your project.  So the trivial example (serving a
+static page) looks like this:
 
 ```
 void test_response(struct hitArgs*, char*, char*, http_verb);
@@ -29,19 +37,29 @@ void test_response(struct hitArgs *args, char *path, char *request_body, http_ve
 }
 ```
 
-I owe a lot to nweb: http://www.ibm.com/developerworks/systems/library/es-nweb/index.html which was my starting point.  But I am allowing extra things like HTTP POSTs and serving dynamic content.  Unlike nweb, this code does not run as a daemon, and logging goes to the console by default, although you can override the logging function and do something else if you like.
+I owe a lot to nweb: http://www.ibm.com/developerworks/systems/library/es-nweb/index.html
+which was my starting point.  But I am allowing extra things like HTTP POSTs and serving
+dynamic content.  Unlike nweb, this code does not run as a daemon, and logging goes to
+the console by default, although you can override the logging function and do something
+else if you like.
 
 
 Building
 ========
 
-To build the example program, which uses jQuery, allows HTML Form values to be posted back, and gives dynamic responses, just type ```make``` and you can then run ```dweb``` from the command line (you need to specify the port number as the first parameter).
+To build the example program, which uses jQuery, allows HTML Form values to be posted
+back, and gives dynamic responses, just type ```make``` and you can then run ```dweb```
+from the command line (you need to specify the port number as the first parameter).
 
-Alternatively, to just build the *trivial* example (as shown above) you can type ```make simple``` and then run ```simple``` from the command line.
+Alternatively, to just build the *trivial* example (as shown above) you can type
+```make simple``` and then run ```simple``` from the command line.
 
 Request Size
 ========
-The maximum bytes read from the incoming request is set using the ```#define``` parameter ```MAX_INCOMING_REQUEST``` and this value *includes* the HTTP headers.  The default is **4096** bytes.  If you need to have requests bigger than this you will need to increase that value.
+The maximum bytes read from the incoming request is set using the ```#define```
+parameter ```MAX_INCOMING_REQUEST``` and this value *includes* the HTTP headers.
+The default is **4096** bytes.  If you need to have requests bigger than this you will
+need to increase that value.
 
 License
 =======
@@ -60,5 +78,9 @@ subject to the following conditions:
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
