@@ -1,7 +1,7 @@
 /*
  ============================================================================
- Name        : eclipse_gnu_autotools.cpp
- Author      : A
+ Name        : sample_gnu_autotools_project.cpp
+ Author      : Alex Panchul
  Version     :
  Copyright   : Your copyright notice
  Description : Hello World in C++,

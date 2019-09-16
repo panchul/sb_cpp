@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT(eclipse_gnu_autotools, 1.0)
+AC_INIT(sample_gnu_autotools_project, 1.0)
 
 
 AC_CANONICAL_SYSTEM
