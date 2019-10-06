@@ -1,5 +1,4 @@
-//
-// findis 10 biggest integers within 100,000 array, having some room for parallelism.
+// integers within 100,000 array, having some room for parallelism.
 //
 // c++17 features
 // g++ -std=c++1z largest_10.cpp
@@ -60,5 +59,3 @@ int main() {
 
 	return 0;
 }
-
-

@@ -1,6 +1,4 @@
-
 // baseline is from here: http://www.cplusplus.com/reference/mutex/mutex/
-
 // $ g++ -std=c++1z mutex_trylock.cpp -lpthread 
 
 #include <iostream>       // std::cout
@@ -19,8 +17,7 @@ void attempt_10k_increases () {
   }
 }
 
-int main ()
-{
+int main () {
   std::thread threads[10];
   // spawn 10 threads:
   for (int i=0; i<10; ++i)
@@ -31,4 +28,3 @@ int main ()
 
   return 0;
 }
-

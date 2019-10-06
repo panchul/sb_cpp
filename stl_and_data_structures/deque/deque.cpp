@@ -1,22 +1,12 @@
-//
 // $ g++ -std=c++1z deque.cpp
-//
-
 #include <iostream>
 #include <deque>
-
 using namespace std;
-
-int main ()
-{
+int main () {
   	deque<int> first;                                // empty deque of ints
-  	
   	deque<int> second (4,100);                       // four ints with value 100
-  	
 	deque<int> third (second.begin(),second.end());  // iterating through second
-	
 	deque<int> fourth (third);                       // a copy of third
-
 	// the iterator constructor can be used to copy arrays:
   	int myints[] = {1,2,3,4};
   	deque<int> fifth (myints, myints + sizeof(myints) / sizeof(int) );
@@ -24,7 +14,6 @@ int main ()
   	cout << "fifth: ";
 	for (deque<int>::iterator it = fifth.begin(); it != fifth.end(); ++it)
 		cout << ' ' << *it;
-
 	cout << '\n';
 
 	deque<int> mydeque = {10,20,30};
@@ -34,7 +23,6 @@ int main ()
 	for (auto& x: mydeque)
 		cout << ' ' << x;
 	cout << '\n';
-
 	return 0;
 }
 

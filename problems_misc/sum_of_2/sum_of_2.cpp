@@ -1,4 +1,3 @@
-
 //
 // in an array find two elements that produce certain number when added.
 // 
@@ -58,7 +57,6 @@ int main() {
 
 	vector<int> inp = {1,3,4,9,6,7,8,19,9};
 	vector<int> inp2 = {1,4,5,6,7,9,9,10};
-
 	
 	find2sum(inp, 10);
 	find2sum(inp, 12);

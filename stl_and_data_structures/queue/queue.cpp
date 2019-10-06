@@ -1,11 +1,9 @@
-
 #include <iostream>
 #include <queue>
 
 using namespace std;
 
-int main ()
-{
+int main () {
 	queue<int> myqueue;
 	
 	myqueue.push (1);
@@ -15,8 +13,8 @@ int main ()
 
   	cout << "myqueue: ";
 	
-	while (!myqueue.empty())
-	{
+	while (!myqueue.empty()) {
+	
 		cout << ' ' << myqueue.front();
 		myqueue.pop();
   	}
@@ -24,4 +22,3 @@ int main ()
 
   	return 0;
 }
-

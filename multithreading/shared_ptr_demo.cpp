@@ -80,4 +80,3 @@ int main()
     t1.join(); t2.join(); t3.join();
     std::cout << "All threads completed, the last one deleted Derived\n";
 }
-

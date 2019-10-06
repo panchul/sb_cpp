@@ -1,7 +1,6 @@
 //
 // Neat tricks to conveniently initialize a vector.
 // $ g++ -std=c++1z vector_init.cpp 
-//
 
 #include <iostream>
 #include <vector>
