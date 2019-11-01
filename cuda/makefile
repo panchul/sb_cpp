@@ -11,5 +11,8 @@ plain: add_plain.cpp
 	g++ -o plain add_plain.cpp          
 
 test: plain cuda
-	time ./plain
-	time ./cuda
+	bash -c "time ./plain"
+	bash -c "time ./cuda"
+	
+clean:	
+	rm -rf ./cuda ./plain
