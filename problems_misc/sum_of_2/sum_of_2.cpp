@@ -12,7 +12,7 @@ using namespace std;
 void find2sum(const vector<int>& inp, int n);
 
 void find2sum(const vector<int>& inp0, int n) {
-	deque<int> inp;
+	deque<int> inp; // deque not vector - because we will be working with both ends.
 
 	cout << "input: ";
 

@@ -1,5 +1,3 @@
-
-
 // Compiled this on Mac like so:
 // g++ -I $BOOST_ROOT boost_lambda1.cpp
 // should work ok on Linux too.

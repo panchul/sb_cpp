@@ -1,4 +1,5 @@
 // $ g++ -std=c++1z thread_args.cpp -lpthread
+// $ g++ -std=c++1z thread_args.cpp -pthread
 
 #include <iostream>
 #include <thread>
