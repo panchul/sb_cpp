@@ -6,16 +6,18 @@
 #define MYTHREADS	1024
 
 #define MYELEMENTS	70000000
-#define DO_CUDA
 
-#ifdef DO_CUDA
+// Makefile passes it in via -DDO_CUDA
+//#define DO_CUDA
+
+//#ifdef DO_CUDA
 // For the CUDA runtime routines (prefixed with "cuda_")
 #include <cuda_runtime.h>
-
-#include <helper_cuda.h>
+//#include <helper_cuda.h>
 #endif
-/*
-void myfunc(float a, float b, float* c) {
+
+__device__
+void myfunc1(float a, float b, float* c) {
         *(c) =
                 (a + b)*(a + b)*(a+b)
                 +(a + b*a + b)*(a+b)
@@ -25,7 +27,7 @@ void myfunc(float a, float b, float* c) {
                 +(a * b*(a - b))*(a+b)
                 ;
 }
-*/
+
 #define myfunc(a, b, c) \
         * c = \
                 (a + b)*(a + b)*(a+b) \
@@ -34,9 +36,6 @@ void myfunc(float a, float b, float* c) {
                 +(a + b)*(a + b)*(a+b) \
                 +(a + b*(a + b)*a+b) \
                 +(a * b*(a - b))*(a+b) \
-
-
-
 
 #ifdef DO_CUDA
 /**
@@ -52,19 +51,19 @@ vectorAdd(const float *A, const float *B, float *C, int numElements) {
 	float *pC;
 	if ( // j++ < MYTHREADS &&
 		i < numElements) {
-		pC = &(C[i]);
-        	myfunc(A[i], B[i], pC);
+    		pC = &(C[i]);
+        	myfunc1(A[i], B[i], pC);
 	}
 }
 #else
 void vectorAdd(const float *A, const float *B, float *C, int numElements) {
-        int i = 0;
+    int i = 0;
 	float *pC;
-        while( i < numElements) {
+    while( i < numElements) {
 		pC = &(C[i]);
-        	myfunc(A[i], B[i], pC);
+      	myfunc(A[i], B[i], pC);
 		++i;
-        }
+    }
 }
 #endif
 
