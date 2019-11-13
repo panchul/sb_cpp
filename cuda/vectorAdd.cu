@@ -10,7 +10,7 @@
 // Makefile passes it in via -DDO_CUDA
 //#define DO_CUDA
 
-//#ifdef DO_CUDA
+#ifdef DO_CUDA
 // For the CUDA runtime routines (prefixed with "cuda_")
 #include <cuda_runtime.h>
 //#include <helper_cuda.h>
