@@ -8,8 +8,7 @@
 #include <iterator>
 #include <algorithm>
 
-int main()
-{
+int main() {
     using namespace boost::lambda;
     typedef std::istream_iterator<int> in;
     // for running like "echo 1 2 3 | ./example", should print 3 6 9

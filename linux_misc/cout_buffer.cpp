@@ -1,4 +1,3 @@
-
 //
 // Quck demo of output buffers flushed _after_ fork, because there is no "\n" at the end, or explicit flush().
 //
@@ -7,15 +6,10 @@
 //HelloHello
 //
 //
-
-
 #include <stdio.h>
 #include <unistd.h>
-
-int main()
-{
+int main() {
   printf("Hello");
   fork();
-  
   return 0;
 }

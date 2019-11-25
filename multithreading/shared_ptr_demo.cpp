@@ -34,23 +34,20 @@ All threads completed, the last one deleted Derived
 #include <chrono>
 #include <mutex>
  
-struct Base
-{
+struct Base {
     Base() { std::cout << "  Base::Base()\n"; }
     // Note: non-virtual destructor is OK here
     ~Base() { std::cout << "  Base::~Base()\n"; }
     virtual void DoStuff() { std::cout << " DoStuff from Base\n"; }
 };
  
-struct Derived: public Base
-{
+struct Derived: public Base {
     Derived() { std::cout << "  Derived::Derived()\n"; }
     ~Derived() { std::cout << "  Derived::~Derived()\n"; }
     virtual void DoStuff() { std::cout << " DoStuff from Derived\n"; }
 };
  
-void thr(std::shared_ptr<Base> p)
-{
+void thr(std::shared_ptr<Base> p) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
     std::shared_ptr<Base> lp = p; // thread-safe, even though the
                                   // shared use_count is incremented
@@ -64,8 +61,7 @@ void thr(std::shared_ptr<Base> p)
     }
 }
  
-int main()
-{
+int main() {
     std::shared_ptr<Base> p = std::make_shared<Derived>();
  
     std::cout << "Created a shared Derived (as a pointer to Base)\n"

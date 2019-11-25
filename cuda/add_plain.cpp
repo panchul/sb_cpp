@@ -1,27 +1,20 @@
 // from here: https://devblogs.nvidia.com/even-easier-introduction-cuda/
-
 // pre-req: get the toolkit
 //
 // $ clang++ add_plain.cpp -o add_plain
 // $ ./add_plain
 // Max error: 0.000000
 //
-
-
 #include <iostream>
 #include <math.h>
 
 // function to add the elements of two arrays
-void add(int n, float *x, float *y)
-{
+void add(int n, float *x, float *y) {
   for (int i = 0; i < n; i++)
       y[i] = x[i] + y[i];
 }
-
-int main(void)
-{
+int main(void) {
   int N = 1<<20; // 1M elements
-
   float *x = new float[N];
   float *y = new float[N];
 
@@ -43,7 +36,5 @@ int main(void)
   // Free memory
   delete [] x;
   delete [] y;
-
   return 0;
 }
-

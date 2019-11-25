@@ -1,4 +1,3 @@
-
 //
 // Console Windows application. 
 // Did it in Visual Studio.

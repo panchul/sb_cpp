@@ -1,13 +1,9 @@
-
-
 #include <stdio.h>
 #include <string.h>
 #include <iostream>
 #include <string>
 #include <map>
 #include <vector>
-
-
 using namespace std;
 
 string color_code(int cell) {
@@ -91,7 +87,6 @@ public:
 };
 
 int main(int argc, char *argv[]) {
-
     cout << "hello!\n";
 
     //41     10        3311100320
@@ -104,8 +99,6 @@ int main(int argc, char *argv[]) {
      myrule.run("23", 1000);
      myrule.run("11", 1000);
 
-
     cout << "Bye-bye!\n";
-
     return 0;
 }

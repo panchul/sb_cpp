@@ -1,9 +1,5 @@
-
-
 // baseline is from here: http://www.cplusplus.com/reference/mutex/mutex/
-
 // $ g++ -std=c++1z mutex_demo.cpp -lpthread 
-
 #include <iostream>
 #include <thread>
 #include <mutex>
@@ -41,4 +37,3 @@ int main ()
 
    return 0;
 }
-    

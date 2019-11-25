@@ -2,8 +2,6 @@
 //
 // $ g++ -std=c++1z misc_cpp17.cpp
 //
-
-
 #include <iostream>
 //#include <conio.h>
 #include <algorithm>    // std::find_if
