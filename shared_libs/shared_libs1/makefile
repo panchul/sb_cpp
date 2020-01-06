@@ -43,4 +43,6 @@ clean:
 	rm -f obj/*
 #shared_lib1 obj/libmym.so obj/mym.o
 
+test: obj/shared_lib1
+	cd obj ; ./shared_lib1
 

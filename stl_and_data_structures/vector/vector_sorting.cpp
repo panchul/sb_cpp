@@ -1,6 +1,9 @@
 // $ g++ -std=c++1z vector_init.cpp 
 #include <iostream>
 #include <vector>
+
+#include <algorithm> // some compilers want this too
+
 int main() {
     std::vector<int> myvec = { 1,3,5,6,2,3,4,5};
     

@@ -22,3 +22,5 @@ all:
 	g++ -Wall -rdynamic -ldl -o obj/withshared src/main.cpp
 	#ld -rpath ./  -L./ -lsharedlib -o obj/withshared obj/main.o
 
+test: obj/withshared
+	cd obj ; ./withshared
