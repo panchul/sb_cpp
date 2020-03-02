@@ -1,16 +1,8 @@
-
-
-
 // demonstrates emplace vs insert
 // $ g++ -std=c++1z multiset.cpp 
 
-
-
-//#include<bits/stdc++.h>
-
 #include <iostream>
 #include <set>
-
 
 using namespace std;
   

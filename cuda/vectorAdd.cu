@@ -1,5 +1,4 @@
 // originated from NVidia's sample for vectorAdd
-
 #include <stdio.h>
 
 //#define MYTHREADS	1920
