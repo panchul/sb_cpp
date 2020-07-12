@@ -9,6 +9,11 @@ https://docs.opencv.org/2.4/modules/core/doc/drawing_functions.html?highlight=re
 The Python versions below, with and without rounded ends of the arc.
 */
 
+#include <iostream>
+#include <opencv2/core/utility.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/highgui.hpp>
+
 int main()
 {
 cv::Mat outImage = cv::Mat(256,256,CV_8UC3, cv::Scalar(255,255,255));
@@ -27,7 +32,7 @@ double startAngleDownright = 0;
 cv::ellipse(outImage,center,cv::Size(radius,radius),0,startAngleDownright,startAngleDownright+180,colorRed,8,0);
 
 cv::imshow("outImage", outImage);
-cv::imwrite("DrawHalfCircle.png", outImage);
+cv::imwrite("tmp/DrawHalfCircle.png", outImage);
 
 cv::waitKey(-1);
 }
