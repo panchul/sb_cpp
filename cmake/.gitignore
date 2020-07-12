@@ -1,0 +1,11 @@
+
+# cmake derivatives
+
+.cproject
+.project
+Makefile
+build
+CMakeCache.txt
+cmake_install.cmake
+mycmaketemplate
+CMakeFiles

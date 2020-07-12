@@ -22,7 +22,7 @@ template<typename T> void print_queue(T& q) {
 }
  
 int main() {
-   	std::priority_queue<int> q;
+   	std::priority_queue<int> q; // Default priority_queue is a max queue
  
 	for(int n : {1,8,5,6,3,4,0,9,7,2})
         	q.push(n);
