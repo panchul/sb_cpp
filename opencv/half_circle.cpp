@@ -14,8 +14,7 @@ The Python versions below, with and without rounded ends of the arc.
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 
-int main()
-{
+int main() {
 cv::Mat outImage = cv::Mat(256,256,CV_8UC3, cv::Scalar(255,255,255));
 
 cv::Point center(128,128);
