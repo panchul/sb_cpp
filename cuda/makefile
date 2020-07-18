@@ -2,7 +2,7 @@
 # https://www.nvidia.com/docs/IO/116711/sc11-cuda-c-basics.pdf
 #
 
-all: cuda plain vectorAdd_cuda vectorAdd_plain
+all: cuda plain vectorAdd_cuda vectorAdd_plain list_threads
 
 cuda: add_cuda.cu
 	nvcc -o cuda add_cuda.cu
@@ -16,6 +16,9 @@ vectorAdd_cuda: vectorAdd.cu
 vectorAdd_plain: vectorAdd.cu
 	nvcc -o vectorAdd_plain vectorAdd.cu 
 
+list_threads: list_threads.cu
+	nvcc -o list_threads list_threads.cu 
+
 test: plain cuda vectorAdd_cuda vectorAdd_plain
 	bash -c "time ./plain"
 	bash -c "time ./cuda"
@@ -23,4 +26,4 @@ test: plain cuda vectorAdd_cuda vectorAdd_plain
 	bash -c "time ./vectorAdd_cuda"
 	
 clean:	
-	rm -rf ./cuda ./plain ./vectorAdd_plain ./vectorAdd_cuda
+	rm -rf ./cuda ./plain ./vectorAdd_plain ./vectorAdd_cuda ./list_threads
