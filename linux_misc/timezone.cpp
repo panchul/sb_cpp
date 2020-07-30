@@ -1,32 +1,33 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <ctype.h>	// for isprint
+#include <ctype.h> // for isprint
 
 #include <time.h>
 // #include <tzfile.h>
 
-main() {
+main()
+{
 	struct tm *t;
 	time_t current_time;
-	
+
 	tzset();
-	timezone = 10*60*60;
+	timezone = 10 * 60 * 60;
 
 	current_time = time(NULL);
-//	current_time -= 4*60*60;
-	t       = localtime(&current_time);
+	//	current_time -= 4*60*60;
+	t = localtime(&current_time);
 
 	printf(" current_time %ld\n", current_time);
 	printf(" timezone %d\n", timezone);
 	printf(" tzname \"%s\"\n", tzname);
 	printf(" daylight %d\n", daylight);
-//	printf(" tzfile \"%s\"\n", tzfile);
+	//	printf(" tzfile \"%s\"\n", tzfile);
 
-//	setenv("TZ", "EST5EDT", 1);
+	//	setenv("TZ", "EST5EDT", 1);
 	printf(" getenv(\"TZ\") \"%s\"\n", getenv("TZ"));
 	printf(" current time is %4.4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d\n",
-                    t->tm_year +1900, t->tm_mon+1, t->tm_mday,
-                    t->tm_hour, t->tm_min,   t->tm_sec);
+		   t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+		   t->tm_hour, t->tm_min, t->tm_sec);
 
 	printf("sizeof(time_t) = %d\n", sizeof(time_t));
 	//--------
@@ -36,9 +37,9 @@ main() {
 	setenv("TZ", mytz, 1);
 	tzset();
 	current_time = time(NULL);
-	t       = localtime(&current_time);
+	t = localtime(&current_time);
 	printf(" getenv(\"TZ\") \"%s\"\n", getenv("TZ"));
 	printf(" current time is %4.4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d\n",
-                    t->tm_year +1900, t->tm_mon+1, t->tm_mday,
-                    t->tm_hour, t->tm_min,   t->tm_sec);
+		   t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+		   t->tm_hour, t->tm_min, t->tm_sec);
 }

@@ -28,14 +28,14 @@
 #include <stdlib.h>
 #include <string.h>
 #ifndef WIN32
-#  include <unistd.h>
+#include <unistd.h>
 #endif
 #include <curl/curl.h>
 
 static const char *urls[] = {
-  "http://www.dancecraft.com",
-  "http://www.panchul.us",
-/*  "https://www.microsoft.com",
+    "http://www.dancecraft.com",
+    "http://www.panchul.us",
+    /*  "https://www.microsoft.com",
   "https://opensource.org",
   "https://www.google.com",
   "https://www.yahoo.com",
@@ -86,7 +86,7 @@ static const char *urls[] = {
 };
 
 #define MAX_PARALLEL 10 /* number of simultaneous transfers */
-#define NUM_URLS sizeof(urls)/sizeof(char *)
+#define NUM_URLS sizeof(urls) / sizeof(char *)
 
 static size_t write_cb(char *data, size_t n, size_t l, void *userp)
 {
@@ -94,7 +94,7 @@ static size_t write_cb(char *data, size_t n, size_t l, void *userp)
   (void)data;
   (void)userp;
 
-  return n*l;
+  return n * l;
 }
 
 static void add_transfer(CURLM *cm, int i)
@@ -120,14 +120,17 @@ int main(void)
   /* Limit the amount of simultaneous connections curl should allow: */
   curl_multi_setopt(cm, CURLMOPT_MAXCONNECTS, (long)MAX_PARALLEL);
 
-  for(transfers = 0; transfers < MAX_PARALLEL; transfers++)
+  for (transfers = 0; transfers < MAX_PARALLEL; transfers++)
     add_transfer(cm, transfers);
 
-  do {
+  do
+  {
     curl_multi_perform(cm, &still_alive);
 
-    while((msg = curl_multi_info_read(cm, &msgs_left))) {
-      if(msg->msg == CURLMSG_DONE) {
+    while ((msg = curl_multi_info_read(cm, &msgs_left)))
+    {
+      if (msg->msg == CURLMSG_DONE)
+      {
         char *url;
         CURL *e = msg->easy_handle;
         curl_easy_getinfo(msg->easy_handle, CURLINFO_PRIVATE, &url);
@@ -138,21 +141,20 @@ int main(void)
         curl_multi_remove_handle(cm, e);
         curl_easy_cleanup(e);
       }
-      else {
+      else
+      {
         fprintf(stderr, "E: CURLMsg (%d)\n", msg->msg);
       }
-      if(transfers < NUM_URLS)
+      if (transfers < NUM_URLS)
         add_transfer(cm, transfers++);
     }
-    if(still_alive)
+    if (still_alive)
       curl_multi_wait(cm, NULL, 0, 1000, NULL);
 
-  } while(still_alive || (transfers < NUM_URLS));
+  } while (still_alive || (transfers < NUM_URLS));
 
   curl_multi_cleanup(cm);
   curl_global_cleanup();
 
   return EXIT_SUCCESS;
 }
-
-

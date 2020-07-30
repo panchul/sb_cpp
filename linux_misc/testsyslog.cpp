@@ -5,11 +5,13 @@
 #include <stdio.h>
 #include <syslog.h>
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
     openlog("mytestlog", LOG_PERROR, LOG_USER);
-    int i=0;
+    int i = 0;
 
-    while(++i < 10) {
+    while (++i < 10)
+    {
         syslog(LOG_INFO, "something %d", i);
     }
     closelog();

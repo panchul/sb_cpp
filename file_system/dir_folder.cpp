@@ -10,12 +10,14 @@ static void list_dir(const char *path)
 {
     struct dirent *entry;
     DIR *dir = opendir(path);
-    if (dir == NULL) {
+    if (dir == NULL)
+    {
         return;
     }
 
-    while ((entry = readdir(dir)) != NULL) {
-        printf("%s\n",entry->d_name);
+    while ((entry = readdir(dir)) != NULL)
+    {
+        printf("%s\n", entry->d_name);
     }
 
     closedir(dir);
@@ -24,7 +26,7 @@ static void list_dir(const char *path)
 int main()
 {
     list_dir("./");
-/*    char name[]="./";
+    /*    char name[]="./";
     len = strlen(name);
     dirp = opendir(".");
     while ((dp = readdir(dirp)) != NULL)
@@ -35,7 +37,7 @@ int main()
         //}
     (void)closedir(dirp);
     return NOT_FOUND;
-*/    
+*/
     return 0;
 }
 

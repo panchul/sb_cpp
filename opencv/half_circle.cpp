@@ -16,25 +16,25 @@ The Python versions below, with and without rounded ends of the arc.
 
 int main()
 {
-cv::Mat outImage = cv::Mat(256,256,CV_8UC3, cv::Scalar(255,255,255));
+    cv::Mat outImage = cv::Mat(256, 256, CV_8UC3, cv::Scalar(255, 255, 255));
 
-cv::Point center(128,128);
-int radius = 100;
+    cv::Point center(128, 128);
+    int radius = 100;
 
-//draw upright black halfcircle
-cv::Scalar colorBlack = cv::Scalar(0,0,0);
-double startAngleUpright = 180;
-cv::ellipse(outImage,center,cv::Size(radius,radius),0,startAngleUpright,startAngleUpright+180,colorBlack,8,0);
+    //draw upright black halfcircle
+    cv::Scalar colorBlack = cv::Scalar(0, 0, 0);
+    double startAngleUpright = 180;
+    cv::ellipse(outImage, center, cv::Size(radius, radius), 0, startAngleUpright, startAngleUpright + 180, colorBlack, 8, 0);
 
-//draw downright red halfcircle
-cv::Scalar colorRed = cv::Scalar(0,0,255);
-double startAngleDownright = 0;
-cv::ellipse(outImage,center,cv::Size(radius,radius),0,startAngleDownright,startAngleDownright+180,colorRed,8,0);
+    //draw downright red halfcircle
+    cv::Scalar colorRed = cv::Scalar(0, 0, 255);
+    double startAngleDownright = 0;
+    cv::ellipse(outImage, center, cv::Size(radius, radius), 0, startAngleDownright, startAngleDownright + 180, colorRed, 8, 0);
 
-cv::imshow("outImage", outImage);
-cv::imwrite("tmp/DrawHalfCircle.png", outImage);
+    cv::imshow("outImage", outImage);
+    cv::imwrite("tmp/DrawHalfCircle.png", outImage);
 
-cv::waitKey(-1);
+    cv::waitKey(-1);
 }
 
 /*
