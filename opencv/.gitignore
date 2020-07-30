@@ -1,4 +1,7 @@
 tmp
+half_circle
+video_cap
+out.avi
 
 # a bunch of others are covered with the parent .gitignore
 
