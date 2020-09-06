@@ -14,7 +14,6 @@ public:
 
 class MyList {
 private:
-
 	MyNode *_root_node;
 
 public:

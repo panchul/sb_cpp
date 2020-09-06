@@ -24,22 +24,19 @@
 #include <algorithm>
 #include <iterator>
 
-struct g
-{
+struct g {
     g():n(0){}
 	int operator()() { return n++; }
 	int n;
 };
 
-struct h
-{
+struct h {
     h():n(0){std::cout << "h constructor\n";}
 	int operator()() { std::cout << "operator(): n is now " << n << "\n"; return n++; }
 	int n;
 };
 
-int main()
-{
+int main() {
     std::cout << "with a and g\n";
  	int a[10];
 	std::generate(a, a+10, g());
@@ -53,4 +50,3 @@ int main()
 
     return 0;
 }
- 

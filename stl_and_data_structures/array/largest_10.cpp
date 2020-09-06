@@ -32,7 +32,6 @@ void find_10(const int *input, int *result) {
 }
 
 int main() {
-
 	int input_array[MYSIZE];
 	
 	for(int i=0; i< MYSIZE; ++i) {
@@ -56,6 +55,5 @@ int main() {
 		cout << result[i] << " ";
 	}
 	cout << "\n";
-
 	return 0;
 }
