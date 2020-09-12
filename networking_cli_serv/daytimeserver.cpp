@@ -331,6 +331,7 @@ int main(int argc, char **argv)
 	int					listenfd, connfd;
 	struct sockaddr_in	servaddr;
 	char				buff[MAXLINE];
+	char				buff2[MAXLINE];
 	time_t				ticks;
 
 	listenfd = Socket(AF_INET, SOCK_STREAM, 0);
@@ -350,7 +351,19 @@ int main(int argc, char **argv)
 		connfd = Accept(listenfd, (SA *) NULL, NULL);
 
         ticks = time(NULL);
-        snprintf(buff, sizeof(buff), "%.24s\r\n", ctime(&ticks));
+        snprintf(buff2, sizeof(buff2),
+		 "%.24s\r\n", ctime(&ticks));
+
+		// http/0.9 is deprecated and dangerous
+        snprintf(buff, sizeof(buff),
+		"HTTP/1.1 200 ok\r\n"
+  		"Content-type: application/octet-stream\r\n"
+		"Content-length: %ld\r\n"
+		"\r\n"
+		 "%s", strlen(buff2), buff2);
+
+		// printf("\"%s\"\n", buff);
+
         Write(connfd, buff, strlen(buff));
 
 		Close(connfd);
