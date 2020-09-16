@@ -2,4 +2,5 @@ cuda
 plain
 vectorAdd_plain
 vectorAdd_cuda
+vectorAdd_cuda_sleep
 list_threads
