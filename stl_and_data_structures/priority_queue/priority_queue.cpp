@@ -22,14 +22,14 @@ template<typename T> void print_queue(T& q) {
 }
  
 int main() {
-   	std::priority_queue<int> q; // Default priority_queue is a max queue
+   	std::priority_queue<int> q; // Default priority_queue is a max queue (max will be at the top and the others are smaller)
  
 	for(int n : {1,8,5,6,3,4,0,9,7,2})
         	q.push(n);
  
 	print_queue(q);
  
-	// with non-default storage and comparator:
+	// with non-default storage and comparator (this will give the smallest number as top()):
     std::priority_queue<int, std::vector<int>, std::greater<int> > q2;
  
     for(int n : {1,8,5,6,3,4,0,9,7,2})

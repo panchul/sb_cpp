@@ -1,5 +1,5 @@
 
-mixture from, for example, here
+A mixture from, for example, here
 http://www.ibm.com/developerworks/linux/library/l-dll.html
 
 and, better one,

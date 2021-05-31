@@ -16,6 +16,4 @@ int main() {
     std::sort(v.begin(), v.end(),
      [](const auto& l,const auto& r){ return l.first < r.first;});
 
-    std::for_each(v.begin(), v.end(),
-     [](const auto& p){std::cout << p.first << " " << p.second << "\n";});
 }
