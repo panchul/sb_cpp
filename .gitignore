@@ -7,6 +7,13 @@
 
 *.log
 
+# vim
+*.swp
+*~
+
+# Visual Studio specific
+*.user
+
 # Compiled Object files
 *.slo
 *.lo
