@@ -1,0 +1,27 @@
+# Local ignores for the camera GUI sample
+build/
+build-*/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+install_manifest.txt
+_deps/
+.ninja_deps
+.ninja_log
+build.ninja
+*.d
+*.dSYM/
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+*.tmp
+*.temp
+.vscode/
+core
+core.*
