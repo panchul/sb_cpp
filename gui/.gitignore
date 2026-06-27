@@ -1,0 +1,42 @@
+# Local ignores for SDL GUI sample
+
+# Build folders
+build/
+build-*/
+cmake-build-*/
+
+# CMake/Ninja outputs
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+install_manifest.txt
+_deps/
+.ninja_deps
+.ninja_log
+build.ninja
+
+# Make dependency files
+*.d
+
+# Debug/profiling outputs
+*.dSYM/
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+
+# Sanitizer/crash artifacts
+*.asan
+*.tsan
+*.ubsan
+core
+core.*
+
+# Editor/temp
+.vscode/
+*.tmp
+*.temp
