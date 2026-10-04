@@ -9,13 +9,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(Vulkan REQUIRED)
 find_package(glfw3 REQUIRED)
 
+find_program(GLSLANG_VALIDATOR glslangValidator REQUIRED)
+
 set(SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
 file(MAKE_DIRECTORY "${SHADER_DIR}")
 
 add_custom_command(
     OUTPUT "${SHADER_DIR}/triangle.vert.spv" "${SHADER_DIR}/triangle.frag.spv"
-    COMMAND glslangValidator -V "${SHADER_DIR}/triangle.vert" -o "${SHADER_DIR}/triangle.vert.spv"
-    COMMAND glslangValidator -V "${SHADER_DIR}/triangle.frag" -o "${SHADER_DIR}/triangle.frag.spv"
+    COMMAND "${GLSLANG_VALIDATOR}" -V "${SHADER_DIR}/triangle.vert" -o "${SHADER_DIR}/triangle.vert.spv"
+    COMMAND "${GLSLANG_VALIDATOR}" -V "${SHADER_DIR}/triangle.frag" -o "${SHADER_DIR}/triangle.frag.spv"
     DEPENDS "${SHADER_DIR}/triangle.vert" "${SHADER_DIR}/triangle.frag"
     COMMENT "Compiling Vulkan shaders"
     VERBATIM
