@@ -1,23 +1,24 @@
 
 # Vulkan Rendering Demo
 
-This project is a small Vulkan + GLFW demo that renders a colorful animated shape on screen and supports simple keyboard interaction. It is built as a lightweight example of the Vulkan rendering pipeline: instance setup, surface creation, swapchain, render pass, shader pipeline, command recording, and frame presentation.
+This project is a small Vulkan + GLFW demo that renders a colorful animated 3D cube on screen and supports simple keyboard interaction. It is built as a lightweight example of the Vulkan rendering pipeline: instance setup, surface creation, swapchain, render pass, depth buffering, shader pipeline, command recording, and frame presentation.
 
 ## Included features
 
 - Vulkan instance and validation layer setup
 - GLFW window and Vulkan surface creation
 - Swapchain and framebuffer setup
+- Depth buffer and depth testing
 - Vertex + fragment shader pipeline
-- Animated colored triangle-based object
-- Keyboard interaction for movement and rotation
+- Animated colored 3D cube
+- Keyboard interaction for rotation
 
 ## Controls
 
-- `A` / `D`: rotate object
-- `W` / `S`: move object vertically
-- `Q` / `E`: move object horizontally
-- `R`: reset the object position and rotation
+- `A` / `D`: rotate around the Y axis
+- `W` / `S`: rotate around the X axis
+- `Q` / `E`: rotate around the Z axis
+- `R`: reset the rotation
 
 ## Requirements
 
@@ -29,21 +30,40 @@ brew install glfw molten-vk vulkan-headers vulkan-loader vulkan-validationlayers
 
 ## Build
 
-From this folder:
+From this folder, you can build either configuration explicitly:
 
 ```bash
-./build.sh
+./build_debug.sh
+./build_release.sh
 ```
 
-This creates a local `build/` folder and compiles the project with CMake.
+The convenience wrappers also work:
+
+```bash
+./build.sh debug
+./build.sh release
+```
+
+Each script creates a separate local build folder:
+
+- `build/debug`
+- `build/release`
 
 ## Run
 
 ```bash
-./run.sh
+./run_debug.sh
+./run_release.sh
 ```
 
-The launch script sets the Vulkan environment variables needed for MoltenVK on macOS:
+You can also use the convenience wrappers:
+
+```bash
+./run.sh debug
+./run.sh release
+```
+
+The launch scripts set the Vulkan environment variables needed for MoltenVK on macOS:
 
 - `VK_ICD_FILENAMES`: points to the MoltenVK ICD
 - `VK_LAYER_PATH`: loads the validation layer from the Vulkan installation

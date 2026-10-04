@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <cstdlib>
 #include <fstream>
@@ -26,6 +27,10 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
+// Vulkan exposes many functions through function pointers because the Vulkan
+// loader can optionally support different extensions. This wrapper resolves the
+// debug messenger creation function at runtime and safely handles systems where
+// the extension is not available.
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
     auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
     if (func != nullptr) {
@@ -34,6 +39,8 @@ VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMes
     return VK_ERROR_EXTENSION_NOT_PRESENT;
 }
 
+// This is the matching destroy function for the debug message callback. Vulkan
+// expects us to clean up debug resources explicitly when the app shuts down.
 void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator) {
     auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
     if (func != nullptr) {
@@ -41,20 +48,26 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
     }
 }
 
+// A vertex describes a single point in our mesh. Each vertex stores its local
+// position in 3D space and the color that should be used when shading it.
 struct Vertex {
-    float pos[2];
+    float pos[3];
     float color[3];
 };
 
+// Push constants are a small block of uniform-like data sent directly to the
+// shader for each draw call. They are used here for rotation and timing values,
+// which change every frame but do not require a full descriptor set/buffer.
 struct PushConstants {
-    float offsetX;
-    float offsetY;
-    float scaleX;
-    float scaleY;
-    float rotation;
+    float rotationX;
+    float rotationY;
+    float rotationZ;
+    float aspect;
     float time;
 };
 
+// A GPU may expose multiple queue families. We need at least one queue capable
+// of graphics work and another capable of presenting to the surface.
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
     std::optional<uint32_t> presentFamily;
@@ -66,6 +79,8 @@ struct QueueFamilyIndices {
 
 class VulkanDemo {
 public:
+    // The application's top-level lifecycle: create the window, initialize Vulkan,
+    // run the rendering loop, and then destroy all objects in reverse order.
     void run() {
         initWindow();
         initVulkan();
@@ -74,17 +89,23 @@ public:
     }
 
 private:
+    // GLFW window used to create a Vulkan surface and receive input.
     GLFWwindow* window = nullptr;
 
+    // Vulkan handles are opaque integer-like values that identify objects such as
+    // the instance, the logical device, the swapchain, and the pipeline.
     VkInstance instance = VK_NULL_HANDLE;
     VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
     VkSurfaceKHR surface = VK_NULL_HANDLE;
 
+    // The selected physical GPU and the logical device created from it.
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     VkDevice device = VK_NULL_HANDLE;
     VkQueue graphicsQueue = VK_NULL_HANDLE;
     VkQueue presentQueue = VK_NULL_HANDLE;
 
+    // Swapchain and image objects are how Vulkan presents rendered frames to the
+    // window. The app renders into one of these images and then presents it.
     VkSwapchainKHR swapChain = VK_NULL_HANDLE;
     VkFormat swapChainImageFormat = VK_FORMAT_UNDEFINED;
     VkExtent2D swapChainExtent{};
@@ -92,26 +113,40 @@ private:
     std::vector<VkImageView> swapChainImageViews;
     std::vector<VkFramebuffer> swapChainFramebuffers;
 
+    // Render pass and pipeline are the GPU-side configuration that tells Vulkan
+    // how to transform vertices and write the final image.
     VkRenderPass renderPass = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
     VkPipeline graphicsPipeline = VK_NULL_HANDLE;
+    VkImage depthImage = VK_NULL_HANDLE;
+    VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
+    VkImageView depthImageView = VK_NULL_HANDLE;
 
+    // Command buffers store the GPU commands that will be submitted in each frame.
     VkCommandPool commandPool = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> commandBuffers;
 
+    // The mesh is uploaded to a GPU buffer. The application tracks the buffer,
+    // its memory, and how many vertices are in the draw call.
     VkBuffer vertexBuffer = VK_NULL_HANDLE;
     VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+    uint32_t vertexCount = 0;
 
+    // Synchronization objects prevent the CPU and GPU from racing each other.
     VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
     VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
     VkFence inFlightFence = VK_NULL_HANDLE;
 
+    // Keyboard state and per-frame animation values.
     bool keys[1024] = {};
-    float offsetX = 0.0f;
-    float offsetY = 0.0f;
-    float rotation = 0.0f;
+    float rotationX = 0.0f;
+    float rotationY = 0.0f;
+    float rotationZ = 0.0f;
     float time = 0.0f;
 
+    // On macOS with MoltenVK, some portability extensions may be required to
+    // enumerate and use the GPU correctly. We keep the extension names in one
+    // place so the instance and device setup stay readable.
     static constexpr const char* portabilitySubsetExtensionName = "VK_KHR_portability_subset";
     static constexpr const char* portabilityEnumerationExtensionName = "VK_KHR_portability_enumeration";
 
@@ -121,6 +156,9 @@ private:
     };
 
     void initWindow() {
+        // GLFW creates the OS window and provides the surface we will hand to
+        // Vulkan. A Vulkan app still needs a windowing library to create the
+        // actual visible framebuffer.
         if (!glfwInit()) {
             throw std::runtime_error("failed to initialize GLFW");
         }
@@ -139,6 +177,10 @@ private:
     }
 
     void initVulkan() {
+        // Vulkan is a low-level API: before drawing anything, we must create the
+        // Vulkan instance, select a compatible GPU, create a swapchain for the
+        // window, and prepare the rendering pipeline. These calls set up the
+        // render context the application will use for every frame.
         createInstance();
         setupDebugMessenger();
         createSurface();
@@ -148,6 +190,7 @@ private:
         createImageViews();
         createRenderPass();
         createGraphicsPipeline();
+        createDepthResources();
         createFramebuffers();
         createCommandPool();
         createVertexBuffer();
@@ -155,6 +198,9 @@ private:
     }
 
     void mainLoop() {
+        // The application loop is where the game/demo logic and rendering are
+        // intertwined: poll events, update transforms, render one frame, repeat
+        // until the user closes the window.
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
             updateScene();
@@ -165,6 +211,8 @@ private:
     }
 
     void cleanup() {
+        // Vulkan resources are explicit and must be destroyed in reverse order of
+        // creation. This avoids dangling handles and makes cleanup predictable.
         vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
         vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
         vkDestroyFence(device, inFlightFence, nullptr);
@@ -176,6 +224,9 @@ private:
         for (VkFramebuffer framebuffer : swapChainFramebuffers) {
             vkDestroyFramebuffer(device, framebuffer, nullptr);
         }
+        vkDestroyImageView(device, depthImageView, nullptr);
+        vkDestroyImage(device, depthImage, nullptr);
+        vkFreeMemory(device, depthImageMemory, nullptr);
 
         vkDestroyPipeline(device, graphicsPipeline, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
@@ -199,6 +250,9 @@ private:
     }
 
     static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+        // GLFW calls this callback whenever a key event occurs. The callback is
+        // not a member function, so it must fetch the owning demo instance from
+        // GLFW's user pointer and update the keyboard state array.
         auto app = static_cast<VulkanDemo*>(glfwGetWindowUserPointer(window));
         if (app == nullptr) {
             return;
@@ -214,28 +268,33 @@ private:
     }
 
     void updateScene() {
+        // The application updates its simulation state once per frame.
+        // Here, keyboard input changes the cube's Euler rotation so the user can
+        // see the 3D object from different angles. This is the CPU-side logic
+        // that feeds values into the GPU shaders via push constants.
+        const float rotationSpeed = 0.025f;
         if (keys[GLFW_KEY_A]) {
-            rotation -= 0.03f;
+            rotationY -= rotationSpeed;
         }
         if (keys[GLFW_KEY_D]) {
-            rotation += 0.03f;
+            rotationY += rotationSpeed;
         }
         if (keys[GLFW_KEY_W]) {
-            offsetY += 0.01f;
+            rotationX -= rotationSpeed;
         }
         if (keys[GLFW_KEY_S]) {
-            offsetY -= 0.01f;
+            rotationX += rotationSpeed;
         }
         if (keys[GLFW_KEY_Q]) {
-            offsetX -= 0.01f;
+            rotationZ -= rotationSpeed;
         }
         if (keys[GLFW_KEY_E]) {
-            offsetX += 0.01f;
+            rotationZ += rotationSpeed;
         }
         if (keys[GLFW_KEY_R]) {
-            offsetX = 0.0f;
-            offsetY = 0.0f;
-            rotation = 0.0f;
+            rotationX = 0.0f;
+            rotationY = 0.0f;
+            rotationZ = 0.0f;
         }
 
         auto now = std::chrono::steady_clock::now().time_since_epoch();
@@ -244,6 +303,9 @@ private:
     }
 
     void createInstance() {
+        // Vulkan is initialized through a VkInstance, which is the global entry
+        // point into the API. This object is required before any device, surface,
+        // or shader-related setup can happen.
         if (enableValidationLayers && !checkValidationLayerSupport()) {
             throw std::runtime_error("validation layers requested but not available");
         }
@@ -285,6 +347,9 @@ private:
     }
 
     void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo) {
+        // Validation layers are optional but invaluable during development. This
+        // configures which message severities and message categories are reported,
+        // so the app can print warnings and errors during setup and rendering.
         createInfo = {};
         createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
         createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
@@ -297,6 +362,9 @@ private:
     }
 
     void setupDebugMessenger() {
+        // Once the instance exists, we can attach a Vulkan debug messenger. This
+        // allows the validation layers to print warnings when we do something
+        // incorrect, which is extremely helpful while learning Vulkan.
         if (!enableValidationLayers) {
             return;
         }
@@ -310,12 +378,18 @@ private:
     }
 
     void createSurface() {
+        // The Vulkan surface connects the Vulkan presentation pipeline to the OS
+        // window. Without a surface, Vulkan cannot display images presentable to
+        // the user.
         if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
             throw std::runtime_error("failed to create window surface");
         }
     }
 
     void pickPhysicalDevice() {
+        // A Vulkan app may be able to use multiple GPUs. We enumerate them and
+        // choose the one that satisfies our requirements for graphics and surface
+        // presentation.
         uint32_t deviceCount = 0;
         vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
         if (deviceCount == 0) {
@@ -338,6 +412,9 @@ private:
     }
 
     bool isDeviceSuitable(VkPhysicalDevice device) {
+        // A physical device is suitable only if it can do the work we need. This
+        // function checks queue support, required extensions, and a few features
+        // needed by the sample.
         QueueFamilyIndices indices = findQueueFamilies(device);
         bool extensionSupport = checkDeviceExtensionSupport(device);
 
@@ -348,6 +425,8 @@ private:
     }
 
     bool checkDeviceExtensionSupport(VkPhysicalDevice candidate) {
+        // This checks whether the selected GPU supports the extensions needed by
+        // the app, such as swapchain support and portability features.
         uint32_t extensionCount = 0;
         vkEnumerateDeviceExtensionProperties(candidate, nullptr, &extensionCount, nullptr);
 
@@ -371,6 +450,9 @@ private:
     }
 
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
+        // The graphics queue and present queue are separate concepts. A GPU may
+        // expose them in the same family or different families; this function
+        // discovers which one is which.
         QueueFamilyIndices indices;
         uint32_t queueFamilyCount = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
@@ -399,6 +481,9 @@ private:
     }
 
     void createLogicalDevice() {
+        // A logical device is the actual interface used by the app to interact
+        // with a physical GPU. It is created with the queue families and extensions
+        // we need for rendering and presenting.
         QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
         std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
@@ -441,6 +526,10 @@ private:
     }
 
     void createSwapChain() {
+        // A swapchain is the presentation layer that connects the Vulkan render
+        // target to the window. It owns the images that will be rendered into and
+        // later presented to the screen. The app renders into one image, then
+        // swaps it to the front buffer for display.
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
 
         VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
@@ -499,6 +588,9 @@ private:
     };
 
     SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device) {
+        // Before creating a swapchain, Vulkan requires us to inspect the surface's
+        // capabilities, formats, and presentation modes. This is how we choose a
+        // configuration that matches the window and GPU.
         SwapChainSupportDetails details;
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
 
@@ -520,6 +612,8 @@ private:
     }
 
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
+        // Surface format describes the color channel layout of the swapchain. We
+        // prefer the standard sRGB color format used by modern graphics APIs.
         for (const auto& availableFormat : availableFormats) {
             if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
                 availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
@@ -530,6 +624,8 @@ private:
     }
 
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
+        // Presentation mode controls how frames are displayed: immediate,
+        // mailbox, FIFO, etc. MAILBOX is often the most responsive for demos.
         for (const auto& availablePresentMode : availablePresentModes) {
             if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
                 return availablePresentMode;
@@ -539,6 +635,8 @@ private:
     }
 
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
+        // Swap extent defines the pixel size of the swapchain images. It usually
+        // matches the window's framebuffer size, clamped to the surface limits.
         if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
             return capabilities.currentExtent;
         }
@@ -559,6 +657,8 @@ private:
     }
 
     void createImageViews() {
+        // Each swapchain image is wrapped in a VkImageView so the GPU can access
+        // it as a texture-like resource for color attachments.
         swapChainImageViews.resize(swapChainImages.size());
 
         for (size_t i = 0; i < swapChainImages.size(); ++i) {
@@ -584,6 +684,11 @@ private:
     }
 
     void createRenderPass() {
+        // A render pass describes the sequence of image attachments and
+        // subpasses used during rendering. Here we define a color attachment for
+        // the window and a depth attachment for our 3D cube so the pipeline can
+        // write color and depth information in the right order. The render pass is
+        // essentially the high-level description of the render target layout.
         VkAttachmentDescription colorAttachment{};
         colorAttachment.format = swapChainImageFormat;
         colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -598,23 +703,40 @@ private:
         colorAttachmentRef.attachment = 0;
         colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+        VkAttachmentDescription depthAttachment{};
+        depthAttachment.format = findDepthFormat();
+        depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+        VkAttachmentReference depthAttachmentRef{};
+        depthAttachmentRef.attachment = 1;
+        depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
         VkSubpassDescription subpass{};
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpass.colorAttachmentCount = 1;
         subpass.pColorAttachments = &colorAttachmentRef;
+        subpass.pDepthStencilAttachment = &depthAttachmentRef;
 
         VkSubpassDependency dependency{};
         dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
         dependency.dstSubpass = 0;
-        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
         dependency.srcAccessMask = 0;
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+        std::array<VkAttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
 
         VkRenderPassCreateInfo renderPassInfo{};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        renderPassInfo.attachmentCount = 1;
-        renderPassInfo.pAttachments = &colorAttachment;
+        renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+        renderPassInfo.pAttachments = attachments.data();
         renderPassInfo.subpassCount = 1;
         renderPassInfo.pSubpasses = &subpass;
         renderPassInfo.dependencyCount = 1;
@@ -626,6 +748,11 @@ private:
     }
 
     void createGraphicsPipeline() {
+        // The graphics pipeline is the GPU program configuration: shader stages,
+        // vertex input layout, rasterizer state, depth testing, blending, and
+        // other fixed-function settings. Once built, it is reusable for every
+        // frame while drawing the scene. It is the Vulkan equivalent of the
+        // "shader + state machine" that the GPU executes during drawing.
         std::vector<char> vertCode = readFile("shaders/triangle.vert.spv");
         std::vector<char> fragCode = readFile("shaders/triangle.frag.spv");
 
@@ -657,7 +784,7 @@ private:
         std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
         attributeDescriptions[0].binding = 0;
         attributeDescriptions[0].location = 0;
-        attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
         attributeDescriptions[0].offset = offsetof(Vertex, pos);
 
         attributeDescriptions[1].binding = 0;
@@ -709,6 +836,14 @@ private:
         multisampling.sampleShadingEnable = VK_FALSE;
         multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
+        VkPipelineDepthStencilStateCreateInfo depthStencil{};
+        depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        depthStencil.depthTestEnable = VK_TRUE;
+        depthStencil.depthWriteEnable = VK_TRUE;
+        depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+        depthStencil.depthBoundsTestEnable = VK_FALSE;
+        depthStencil.stencilTestEnable = VK_FALSE;
+
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};
         colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
         colorBlendAttachment.blendEnable = VK_FALSE;
@@ -758,6 +893,7 @@ private:
         pipelineInfo.pViewportState = &viewportState;
         pipelineInfo.pRasterizationState = &rasterizer;
         pipelineInfo.pMultisampleState = &multisampling;
+        pipelineInfo.pDepthStencilState = &depthStencil;
         pipelineInfo.pColorBlendState = &colorBlending;
         pipelineInfo.pDynamicState = &dynamicState;
         pipelineInfo.layout = pipelineLayout;
@@ -773,6 +909,8 @@ private:
     }
 
     std::vector<char> readFile(const std::string& filename) {
+        // Shader bytecode files are stored on disk and loaded into memory before
+        // creating a VkShaderModule. Vulkan expects SPIR-V code, not raw GLSL text.
         std::ifstream file(filename, std::ios::binary | std::ios::ate);
         if (!file.is_open()) {
             throw std::runtime_error("failed to open shader file: " + filename);
@@ -786,6 +924,9 @@ private:
     }
 
     VkShaderModule createShaderModule(const std::vector<char>& code) {
+        // A shader module is the compiled shader program object Vulkan uses.
+        // Once created, it can be attached to the graphics pipeline as the vertex
+        // or fragment stage.
         VkShaderModuleCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         createInfo.codeSize = code.size();
@@ -800,16 +941,18 @@ private:
     }
 
     void createFramebuffers() {
+        // Framebuffers bind the render pass attachments to actual images. They are
+        // the final link between the swapchain images and the render pass.
         swapChainFramebuffers.resize(swapChainImageViews.size());
 
         for (size_t i = 0; i < swapChainImageViews.size(); ++i) {
-            VkImageView attachments[] = { swapChainImageViews[i] };
+            std::array<VkImageView, 2> attachments = { swapChainImageViews[i], depthImageView };
 
             VkFramebufferCreateInfo framebufferInfo{};
             framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
             framebufferInfo.renderPass = renderPass;
-            framebufferInfo.attachmentCount = 1;
-            framebufferInfo.pAttachments = attachments;
+            framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+            framebufferInfo.pAttachments = attachments.data();
             framebufferInfo.width = swapChainExtent.width;
             framebufferInfo.height = swapChainExtent.height;
             framebufferInfo.layers = 1;
@@ -821,6 +964,9 @@ private:
     }
 
     void createCommandPool() {
+        // Command pools manage the lifetime of command buffers, which record the
+        // GPU operations to be executed. This pool is tied to the graphics queue
+        // family that will submit drawing commands.
         QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
         VkCommandPoolCreateInfo poolInfo{};
@@ -845,11 +991,47 @@ private:
     }
 
     void createVertexBuffer() {
-        std::vector<Vertex> vertices = {
-            {{-0.75f, -0.60f}, {1.0f, 0.2f, 0.2f}},
-            {{0.00f,  0.85f}, {0.2f, 1.0f, 0.4f}},
-            {{0.75f, -0.60f}, {0.2f, 0.5f, 1.0f}}
+        // Vertex data lives on the CPU at first. We upload the cube mesh to a GPU
+        // buffer so the vertex shader can read it during rendering. This is the
+        // mesh data the rasterizer uses to draw triangles on screen.
+        std::vector<Vertex> vertices;
+        vertices.reserve(36);
+
+        const std::array<std::array<float, 3>, 8> corners = {{
+            {{-0.6f, -0.6f, -0.6f}},
+            {{ 0.6f, -0.6f, -0.6f}},
+            {{ 0.6f,  0.6f, -0.6f}},
+            {{-0.6f,  0.6f, -0.6f}},
+            {{-0.6f, -0.6f,  0.6f}},
+            {{ 0.6f, -0.6f,  0.6f}},
+            {{ 0.6f,  0.6f,  0.6f}},
+            {{-0.6f,  0.6f,  0.6f}}
+        }};
+
+        auto addVertex = [&vertices, &corners](int index, const std::array<float, 3>& color) {
+            vertices.push_back({
+                {corners[index][0], corners[index][1], corners[index][2]},
+                {color[0], color[1], color[2]}
+            });
         };
+
+        auto addFace = [&addVertex](int i0, int i1, int i2, int i3, const std::array<float, 3>& color) {
+            addVertex(i0, color);
+            addVertex(i1, color);
+            addVertex(i2, color);
+            addVertex(i2, color);
+            addVertex(i3, color);
+            addVertex(i0, color);
+        };
+
+        addFace(4, 5, 6, 7, {1.0f, 0.2f, 0.2f}); // Front
+        addFace(1, 0, 3, 2, {0.2f, 1.0f, 0.2f}); // Back
+        addFace(0, 4, 7, 3, {0.2f, 0.4f, 1.0f}); // Left
+        addFace(5, 1, 2, 6, {1.0f, 0.8f, 0.2f}); // Right
+        addFace(3, 7, 6, 2, {0.8f, 0.2f, 1.0f}); // Top
+        addFace(0, 1, 5, 4, {0.2f, 1.0f, 1.0f}); // Bottom
+
+        vertexCount = static_cast<uint32_t>(vertices.size());
 
         VkDeviceSize bufferSize = sizeof(Vertex) * vertices.size();
 
@@ -878,7 +1060,32 @@ private:
         vkFreeMemory(device, stagingBufferMemory, nullptr);
     }
 
+    void createDepthResources() {
+        // Depth resources are required when rendering a 3D scene. The depth image
+        // stores the distance from the camera for each pixel so the GPU can reject
+        // fragments that should be behind other triangles.
+        VkFormat depthFormat = findDepthFormat();
+        createImage(swapChainExtent.width,
+                    swapChainExtent.height,
+                    depthFormat,
+                    VK_IMAGE_TILING_OPTIMAL,
+                    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                    depthImage,
+                    depthImageMemory);
+
+        VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        if (hasStencilComponent(depthFormat)) {
+            aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
+        depthImageView = createImageView(depthImage, depthFormat, aspectMask);
+    }
+
     void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
+        // Vulkan does not expose a "malloc-like" memory pool directly. Instead,
+        // we create buffers and then allocate device memory for them. The memory
+        // type depends on whether the buffer is host-visible (for staging) or
+        // device-local (for the final GPU-resident resource).
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.size = size;
@@ -905,6 +1112,9 @@ private:
     }
 
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+        // Vulkan memory is not uniform; different heap types have different
+        // capabilities. We select the memory type that matches the resource's
+        // intended usage, such as host-visible staging or GPU-local rendering.
         VkPhysicalDeviceMemoryProperties memProperties{};
         vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
 
@@ -948,7 +1158,113 @@ private:
         vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
     }
 
+    void createImage(uint32_t width,
+                     uint32_t height,
+                     VkFormat format,
+                     VkImageTiling tiling,
+                     VkImageUsageFlags usage,
+                     VkMemoryPropertyFlags properties,
+                     VkImage& image,
+                     VkDeviceMemory& imageMemory) {
+        // Images are Vulkan's representation of textures and render targets. A depth
+        // attachment is just another image with a different format and usage.
+        VkImageCreateInfo imageInfo{};
+        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.extent.width = width;
+        imageInfo.extent.height = height;
+        imageInfo.extent.depth = 1;
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 1;
+        imageInfo.format = format;
+        imageInfo.tiling = tiling;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        imageInfo.usage = usage;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create image");
+        }
+
+        VkMemoryRequirements memRequirements{};
+        vkGetImageMemoryRequirements(device, image, &memRequirements);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate image memory");
+        }
+
+        if (vkBindImageMemory(device, image, imageMemory, 0) != VK_SUCCESS) {
+            throw std::runtime_error("failed to bind image memory");
+        }
+    }
+
+    VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
+        // Image views are the GPU-facing way of interpreting an image. They define
+        // how a raw image should be read, such as a 2D color texture or a depth map.
+        VkImageViewCreateInfo viewInfo{};
+        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.image = image;
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format = format;
+        viewInfo.subresourceRange.aspectMask = aspectFlags;
+        viewInfo.subresourceRange.baseMipLevel = 0;
+        viewInfo.subresourceRange.levelCount = 1;
+        viewInfo.subresourceRange.baseArrayLayer = 0;
+        viewInfo.subresourceRange.layerCount = 1;
+
+        VkImageView imageView = VK_NULL_HANDLE;
+        if (vkCreateImageView(device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create image view");
+        }
+
+        return imageView;
+    }
+
+    VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates,
+                                 VkImageTiling tiling,
+                                 VkFormatFeatureFlags features) {
+        // Vulkan leaves format selection to the app because GPUs differ. This helper
+        // picks a depth format that supports the requested attachment operations.
+        for (VkFormat format : candidates) {
+            VkFormatProperties props{};
+            vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+
+            if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) {
+                return format;
+            }
+            if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features) {
+                return format;
+            }
+        }
+
+        throw std::runtime_error("failed to find supported format");
+    }
+
+    VkFormat findDepthFormat() {
+        // Depth buffers must be stored in a format that supports depth/stencil
+        // attachment operations. Different GPUs support different formats, so we
+        // choose the best one available.
+        return findSupportedFormat(
+            {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+    }
+
+    bool hasStencilComponent(VkFormat format) {
+        return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
+    }
+
     void createSyncObjects() {
+        // Vulkan is asynchronous: the GPU may still be drawing while the CPU starts
+        // preparing the next frame. Semaphores and fences coordinate queue
+        // submissions so we don't overwrite frames or read from images before the
+        // GPU is finished with them.
         VkSemaphoreCreateInfo semaphoreInfo{};
         semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
@@ -964,6 +1280,10 @@ private:
     }
 
     void drawFrame() {
+        // This function is the heart of the frame loop. It acquires a swapchain
+        // image, records draw commands into a command buffer, submits them to the
+        // graphics queue, and then presents the result. In other words, this is
+        // where the CPU tells the GPU: "render the cube into this window image."
         vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
         vkResetFences(device, 1, &inFlightFence);
 
@@ -992,9 +1312,11 @@ private:
         renderPassInfo.renderArea.offset = {0, 0};
         renderPassInfo.renderArea.extent = swapChainExtent;
 
-        VkClearValue clearColor = {{{0.20f, 0.02f, 0.32f, 1.0f}}};
-        renderPassInfo.clearValueCount = 1;
-        renderPassInfo.pClearValues = &clearColor;
+        std::array<VkClearValue, 2> clearValues{};
+        clearValues[0].color = {{0.20f, 0.02f, 0.32f, 1.0f}};
+        clearValues[1].depthStencil = {1.0f, 0};
+        renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+        renderPassInfo.pClearValues = clearValues.data();
 
         vkCmdBeginRenderPass(commandBuffers[imageIndex], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -1019,15 +1341,14 @@ private:
         vkCmdSetScissor(commandBuffers[imageIndex], 0, 1, &scissor);
 
         PushConstants push{};
-        push.offsetX = offsetX;
-        push.offsetY = offsetY;
-        push.scaleX = 0.95f;
-        push.scaleY = 0.95f;
-        push.rotation = rotation;
+        push.rotationX = rotationX;
+        push.rotationY = rotationY;
+        push.rotationZ = rotationZ;
+        push.aspect = static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height);
         push.time = time;
         vkCmdPushConstants(commandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &push);
 
-        vkCmdDraw(commandBuffers[imageIndex], 3, 1, 0, 0);
+        vkCmdDraw(commandBuffers[imageIndex], vertexCount, 1, 0, 0);
         vkCmdEndRenderPass(commandBuffers[imageIndex]);
 
         if (vkEndCommandBuffer(commandBuffers[imageIndex]) != VK_SUCCESS) {

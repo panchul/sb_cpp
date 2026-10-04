@@ -2,16 +2,18 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="${SCRIPT_DIR}/build"
+MODE="${1:-debug}"
+MODE_LOWER="$(printf '%s' "${MODE}" | tr '[:upper:]' '[:lower:]')"
 
-arch="$(uname -m)"
-if [[ "${arch}" == "arm64" ]]; then
-  BREW_PREFIX="/opt/homebrew"
-else
-  BREW_PREFIX="/usr/local"
-fi
-
-export VK_ICD_FILENAMES="${BREW_PREFIX}/opt/molten-vk/etc/vulkan/icd.d/MoltenVK_icd.json"
-export VK_LAYER_PATH="${BREW_PREFIX}/opt/vulkan-validationlayers/share/vulkan/explicit_layer.d"
-
-"${BUILD_DIR}/vulkan_sandbox"
+case "${MODE_LOWER}" in
+  debug)
+    exec "${SCRIPT_DIR}/run_debug.sh"
+    ;;
+  release)
+    exec "${SCRIPT_DIR}/run_release.sh"
+    ;;
+  *)
+    echo "Usage: $0 [debug|release]" >&2
+    exit 1
+    ;;
+esac
