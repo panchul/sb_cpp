@@ -1,6 +1,10 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include <imgui.h>
+#include <backends/imgui_impl_glfw.h>
+#include <backends/imgui_impl_vulkan.h>
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -11,6 +15,8 @@
 #include <iostream>
 #include <limits>
 #include <optional>
+#include <thread>
+#include <unordered_map>
 #include <stdexcept>
 #include <vector>
 
@@ -89,6 +95,15 @@ public:
     }
 
 private:
+    enum class SphereGenerator {
+        UV = 0,
+        Icosphere = 1
+    };
+    enum class RunMode {
+        Demo = 0,
+        Benchmark = 1
+    };
+
     // GLFW window used to create a Vulkan surface and receive input.
     GLFWwindow* window = nullptr;
 
@@ -118,6 +133,7 @@ private:
     VkRenderPass renderPass = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
     VkPipeline graphicsPipeline = VK_NULL_HANDLE;
+    VkPipeline wireframePipeline = VK_NULL_HANDLE;
     VkImage depthImage = VK_NULL_HANDLE;
     VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
     VkImageView depthImageView = VK_NULL_HANDLE;
@@ -136,13 +152,46 @@ private:
     VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
     VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
     VkFence inFlightFence = VK_NULL_HANDLE;
+    VkDescriptorPool imguiDescriptorPool = VK_NULL_HANDLE;
 
-    // Keyboard state and per-frame animation values.
-    bool keys[1024] = {};
+    // Per-frame animation and UI state.
     float rotationX = 0.0f;
     float rotationY = 0.0f;
     float rotationZ = 0.0f;
     float time = 0.0f;
+    float rotationSpeedDegreesPerSecond = 90.0f;
+    float autoRotationY = 0.0f;
+    bool autoRotate = true;
+    float fps = 0.0f;
+    float frameTimeMs = 0.0f;
+    float fpsAccumulator = 0.0f;
+    uint32_t fpsFrameCount = 0;
+    std::chrono::steady_clock::time_point lastFrameTime{};
+    bool hasLastFrameTime = false;
+
+    bool useSphere = false;
+    SphereGenerator sphereGenerator = SphereGenerator::UV;
+    int uvLatitudeSegments = 18;
+    int uvLongitudeSegments = 36;
+    int icoSubdivisions = 2;
+    int triangleBudget = 1224;
+    RunMode runMode = RunMode::Demo;
+    bool preferImmediatePresentMode = false;
+    bool pendingSwapchainRecreate = false;
+    bool immediatePresentSupported = false;
+    VkPresentModeKHR activePresentMode = VK_PRESENT_MODE_FIFO_KHR;
+    bool benchmarkCpuCapEnabled = false;
+    float benchmarkCpuCapFps = 120.0f;
+    bool waitForPresentQueueIdle = true;
+    uint32_t drawInstanceCount = 1;
+    uint32_t triangleCount = 12;
+    bool meshDirty = true;
+    bool imguiInitialized = false;
+    bool supportsWireframe = false;
+    bool wireframeEnabled = false;
+    static constexpr int fpsHistorySize = 120;
+    std::array<float, fpsHistorySize> fpsHistory{};
+    int fpsHistoryOffset = 0;
 
     // On macOS with MoltenVK, some portability extensions may be required to
     // enumerate and use the GPU correctly. We keep the extension names in one
@@ -168,9 +217,6 @@ private:
             glfwTerminate();
             throw std::runtime_error("failed to create GLFW window");
         }
-
-        glfwSetWindowUserPointer(window, this);
-        glfwSetKeyCallback(window, keyCallback);
     }
 
     void initVulkan() {
@@ -190,7 +236,9 @@ private:
         createDepthResources();
         createFramebuffers();
         createCommandPool();
+        allocateCommandBuffers();
         createVertexBuffer();
+        initImGui();
         createSyncObjects();
     }
 
@@ -210,6 +258,8 @@ private:
     void cleanup() {
         // Vulkan resources are explicit and must be destroyed in reverse order of
         // creation. This avoids dangling handles and makes cleanup predictable.
+        shutdownImGui();
+
         vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
         vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
         vkDestroyFence(device, inFlightFence, nullptr);
@@ -217,23 +267,13 @@ private:
         vkDestroyBuffer(device, vertexBuffer, nullptr);
         vkFreeMemory(device, vertexBufferMemory, nullptr);
 
+        cleanupSwapchainDependentResources();
         vkDestroyCommandPool(device, commandPool, nullptr);
-        for (VkFramebuffer framebuffer : swapChainFramebuffers) {
-            vkDestroyFramebuffer(device, framebuffer, nullptr);
-        }
-        vkDestroyImageView(device, depthImageView, nullptr);
-        vkDestroyImage(device, depthImage, nullptr);
-        vkFreeMemory(device, depthImageMemory, nullptr);
 
+        vkDestroyPipeline(device, wireframePipeline, nullptr);
         vkDestroyPipeline(device, graphicsPipeline, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
         vkDestroyRenderPass(device, renderPass, nullptr);
-
-        for (VkImageView imageView : swapChainImageViews) {
-            vkDestroyImageView(device, imageView, nullptr);
-        }
-
-        vkDestroySwapchainKHR(device, swapChain, nullptr);
         vkDestroyDevice(device, nullptr);
         vkDestroySurfaceKHR(instance, surface, nullptr);
 
@@ -246,57 +286,62 @@ private:
         glfwTerminate();
     }
 
-    static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-        // GLFW calls this callback whenever a key event occurs. The callback is
-        // not a member function, so it must fetch the owning demo instance from
-        // GLFW's user pointer and update the keyboard state array.
-        auto app = static_cast<VulkanDemo*>(glfwGetWindowUserPointer(window));
-        if (app == nullptr) {
-            return;
-        }
-
-        if (key >= 0 && key < 1024) {
-            if (action == GLFW_PRESS) {
-                app->keys[key] = true;
-            } else if (action == GLFW_RELEASE) {
-                app->keys[key] = false;
-            }
-        }
-    }
-
     void updateScene() {
         // The application updates its simulation state once per frame.
-        // Here, keyboard input changes the cube's Euler rotation so the user can
+        // Here, keyboard input changes the object's Euler rotation so the user can
         // see the 3D object from different angles. This is the CPU-side logic
         // that feeds values into the GPU shaders via push constants.
-        const float rotationSpeed = 0.025f;
-        if (keys[GLFW_KEY_A]) {
-            rotationY -= rotationSpeed;
+        const auto now = std::chrono::steady_clock::now();
+        float deltaSeconds = 0.0f;
+        if (hasLastFrameTime) {
+            deltaSeconds = std::chrono::duration<float>(now - lastFrameTime).count();
         }
-        if (keys[GLFW_KEY_D]) {
-            rotationY += rotationSpeed;
+        lastFrameTime = now;
+        hasLastFrameTime = true;
+        frameTimeMs = deltaSeconds * 1000.0f;
+        if (deltaSeconds > 0.0f) {
+            fpsHistory[static_cast<size_t>(fpsHistoryOffset)] = 1.0f / deltaSeconds;
+            fpsHistoryOffset = (fpsHistoryOffset + 1) % fpsHistorySize;
         }
-        if (keys[GLFW_KEY_W]) {
-            rotationX -= rotationSpeed;
+
+        fpsAccumulator += deltaSeconds;
+        ++fpsFrameCount;
+        if (fpsAccumulator >= 0.25f) {
+            fps = static_cast<float>(fpsFrameCount) / fpsAccumulator;
+            fpsAccumulator = 0.0f;
+            fpsFrameCount = 0;
         }
-        if (keys[GLFW_KEY_S]) {
-            rotationX += rotationSpeed;
+
+        const float rotationSpeed = rotationSpeedDegreesPerSecond * (3.14159265358979323846f / 180.0f);
+        if (autoRotate) {
+            autoRotationY += rotationSpeed * deltaSeconds;
         }
-        if (keys[GLFW_KEY_Q]) {
-            rotationZ -= rotationSpeed;
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+            rotationY -= rotationSpeed * deltaSeconds;
         }
-        if (keys[GLFW_KEY_E]) {
-            rotationZ += rotationSpeed;
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+            rotationY += rotationSpeed * deltaSeconds;
         }
-        if (keys[GLFW_KEY_R]) {
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+            rotationX -= rotationSpeed * deltaSeconds;
+        }
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+            rotationX += rotationSpeed * deltaSeconds;
+        }
+        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
+            rotationZ -= rotationSpeed * deltaSeconds;
+        }
+        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
+            rotationZ += rotationSpeed * deltaSeconds;
+        }
+        if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
             rotationX = 0.0f;
             rotationY = 0.0f;
             rotationZ = 0.0f;
+            autoRotationY = 0.0f;
         }
 
-        auto now = std::chrono::steady_clock::now().time_since_epoch();
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
-        time = static_cast<float>(ms) / 1000.0f;
+        time += deltaSeconds;
     }
 
     void createInstance() {
@@ -494,17 +539,25 @@ private:
         std::sort(uniqueQueueFamilies.begin(), uniqueQueueFamilies.end());
         uniqueQueueFamilies.erase(std::unique(uniqueQueueFamilies.begin(), uniqueQueueFamilies.end()), uniqueQueueFamilies.end());
 
+        std::vector<float> queuePriorities(uniqueQueueFamilies.size(), 1.0f);
         for (uint32_t queueFamily : uniqueQueueFamilies) {
             VkDeviceQueueCreateInfo queueCreateInfo{};
             queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
             queueCreateInfo.queueFamilyIndex = queueFamily;
             queueCreateInfo.queueCount = 1;
-            float queuePriority = 1.0f;
-            queueCreateInfo.pQueuePriorities = &queuePriority;
+            size_t queueIndex = queueCreateInfos.size();
+            queueCreateInfo.pQueuePriorities = &queuePriorities[queueIndex];
             queueCreateInfos.push_back(queueCreateInfo);
         }
 
+        VkPhysicalDeviceFeatures supportedFeatures{};
+        vkGetPhysicalDeviceFeatures(physicalDevice, &supportedFeatures);
+        supportsWireframe = supportedFeatures.fillModeNonSolid == VK_TRUE;
+
         VkPhysicalDeviceFeatures deviceFeatures{};
+        if (supportsWireframe) {
+            deviceFeatures.fillModeNonSolid = VK_TRUE;
+        }
 
         VkDeviceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -578,6 +631,7 @@ private:
         vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
         swapChainImageFormat = surfaceFormat.format;
         swapChainExtent = extent;
+        activePresentMode = presentMode;
     }
 
     struct SwapChainSupportDetails {
@@ -625,6 +679,16 @@ private:
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
         // Presentation mode controls how frames are displayed: immediate,
         // mailbox, FIFO, etc. MAILBOX is often the most responsive for demos.
+        immediatePresentSupported = false;
+        for (const auto& availablePresentMode : availablePresentModes) {
+            if (availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR) {
+                immediatePresentSupported = true;
+                break;
+            }
+        }
+        if (preferImmediatePresentMode && immediatePresentSupported) {
+            return VK_PRESENT_MODE_IMMEDIATE_KHR;
+        }
         for (const auto& availablePresentMode : availablePresentModes) {
             if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
                 return availablePresentMode;
@@ -903,6 +967,15 @@ private:
             throw std::runtime_error("failed to create graphics pipeline");
         }
 
+        if (supportsWireframe) {
+            VkPipelineRasterizationStateCreateInfo wireRasterizer = rasterizer;
+            wireRasterizer.polygonMode = VK_POLYGON_MODE_LINE;
+            pipelineInfo.pRasterizationState = &wireRasterizer;
+            if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &wireframePipeline) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create wireframe graphics pipeline");
+            }
+        }
+
         vkDestroyShaderModule(device, fragShaderModule, nullptr);
         vkDestroyShaderModule(device, vertShaderModule, nullptr);
     }
@@ -976,6 +1049,13 @@ private:
         if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
             throw std::runtime_error("failed to create command pool");
         }
+    }
+
+    void allocateCommandBuffers() {
+        if (!commandBuffers.empty()) {
+            vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+            commandBuffers.clear();
+        }
 
         commandBuffers.resize(swapChainFramebuffers.size());
         VkCommandBufferAllocateInfo allocInfo{};
@@ -989,10 +1069,77 @@ private:
         }
     }
 
+    void cleanupSwapchainDependentResources() {
+        if (!commandBuffers.empty()) {
+            vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+            commandBuffers.clear();
+        }
+        for (VkFramebuffer framebuffer : swapChainFramebuffers) {
+            vkDestroyFramebuffer(device, framebuffer, nullptr);
+        }
+        swapChainFramebuffers.clear();
+
+        if (depthImageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(device, depthImageView, nullptr);
+            depthImageView = VK_NULL_HANDLE;
+        }
+        if (depthImage != VK_NULL_HANDLE) {
+            vkDestroyImage(device, depthImage, nullptr);
+            depthImage = VK_NULL_HANDLE;
+        }
+        if (depthImageMemory != VK_NULL_HANDLE) {
+            vkFreeMemory(device, depthImageMemory, nullptr);
+            depthImageMemory = VK_NULL_HANDLE;
+        }
+
+        for (VkImageView imageView : swapChainImageViews) {
+            vkDestroyImageView(device, imageView, nullptr);
+        }
+        swapChainImageViews.clear();
+        swapChainImages.clear();
+
+        if (swapChain != VK_NULL_HANDLE) {
+            vkDestroySwapchainKHR(device, swapChain, nullptr);
+            swapChain = VK_NULL_HANDLE;
+        }
+    }
+
+    void recreateSwapChain() {
+        vkDeviceWaitIdle(device);
+        cleanupSwapchainDependentResources();
+        createSwapChain();
+        createImageViews();
+        createDepthResources();
+        createFramebuffers();
+        allocateCommandBuffers();
+        ImGui_ImplVulkan_SetMinImageCount(static_cast<uint32_t>(swapChainImages.size()));
+        pendingSwapchainRecreate = false;
+    }
+
     void createVertexBuffer() {
-        // Vertex data lives on the CPU at first. We upload the cube mesh to a GPU
-        // buffer so the vertex shader can read it during rendering. This is the
-        // mesh data the rasterizer uses to draw triangles on screen.
+        // Vertex data lives on the CPU at first and is uploaded to a GPU buffer.
+        // The active mesh can be a cube or a sphere generated with different
+        // algorithms and detail levels.
+        rebuildMeshBuffer();
+    }
+
+    void rebuildMeshBuffer() {
+        std::vector<Vertex> vertices;
+        if (!useSphere) {
+            vertices = generateCubeMesh();
+        } else if (sphereGenerator == SphereGenerator::UV) {
+            vertices = generateUVSphereMesh(uvLatitudeSegments, uvLongitudeSegments);
+        } else {
+            vertices = generateIcosphereMesh(icoSubdivisions);
+        }
+
+        uploadVerticesToGpu(vertices);
+        vertexCount = static_cast<uint32_t>(vertices.size());
+        triangleCount = vertexCount / 3;
+        meshDirty = false;
+    }
+
+    std::vector<Vertex> generateCubeMesh() const {
         std::vector<Vertex> vertices;
         vertices.reserve(36);
 
@@ -1029,8 +1176,165 @@ private:
         addFace(5, 1, 2, 6, {1.0f, 0.8f, 0.2f}); // Right
         addFace(3, 7, 6, 2, {0.8f, 0.2f, 1.0f}); // Top
         addFace(0, 1, 5, 4, {0.2f, 1.0f, 1.0f}); // Bottom
+        return vertices;
+    }
 
-        vertexCount = static_cast<uint32_t>(vertices.size());
+    std::vector<Vertex> generateUVSphereMesh(int latitudeSegments, int longitudeSegments) const {
+        const int lat = std::max(3, latitudeSegments);
+        const int lon = std::max(3, longitudeSegments);
+        const float radius = 0.78f;
+        const float pi = 3.14159265358979323846f;
+
+        std::vector<Vertex> vertices;
+        vertices.reserve(static_cast<size_t>(lat * lon * 6));
+
+        auto appendVertex = [&vertices, radius](float nx, float ny, float nz) {
+            vertices.push_back({
+                {radius * nx, radius * ny, radius * nz},
+                {(nx + 1.0f) * 0.5f, (ny + 1.0f) * 0.5f, (nz + 1.0f) * 0.5f}
+            });
+        };
+
+        auto spherePoint = [pi](int stack, int slice, int latCount, int lonCount) {
+            float v = static_cast<float>(stack) / static_cast<float>(latCount);
+            float phi = v * pi;
+            float u = static_cast<float>(slice) / static_cast<float>(lonCount);
+            float theta = u * 2.0f * pi;
+            float sinPhi = std::sin(phi);
+            float x = sinPhi * std::cos(theta);
+            float y = std::cos(phi);
+            float z = sinPhi * std::sin(theta);
+            return std::array<float, 3>{x, y, z};
+        };
+
+        for (int stack = 0; stack < lat; ++stack) {
+            int nextStack = stack + 1;
+            for (int slice = 0; slice < lon; ++slice) {
+                int nextSlice = (slice + 1) % lon;
+                auto p00 = spherePoint(stack, slice, lat, lon);
+                auto p01 = spherePoint(stack, nextSlice, lat, lon);
+                auto p10 = spherePoint(nextStack, slice, lat, lon);
+                auto p11 = spherePoint(nextStack, nextSlice, lat, lon);
+
+                if (stack != 0) {
+                    appendVertex(p00[0], p00[1], p00[2]);
+                    appendVertex(p10[0], p10[1], p10[2]);
+                    appendVertex(p11[0], p11[1], p11[2]);
+                }
+                if (stack != lat - 1) {
+                    appendVertex(p00[0], p00[1], p00[2]);
+                    appendVertex(p11[0], p11[1], p11[2]);
+                    appendVertex(p01[0], p01[1], p01[2]);
+                }
+            }
+        }
+
+        return vertices;
+    }
+
+    std::vector<Vertex> generateIcosphereMesh(int subdivisions) const {
+        struct P3 {
+            float x;
+            float y;
+            float z;
+        };
+
+        auto normalize = [](const P3& p) {
+            float length = std::sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
+            return P3{p.x / length, p.y / length, p.z / length};
+        };
+
+        std::vector<P3> points;
+        std::vector<std::array<int, 3>> faces;
+
+        const float t = (1.0f + std::sqrt(5.0f)) * 0.5f;
+        points = {
+            normalize({-1.0f,  t, 0.0f}), normalize({ 1.0f,  t, 0.0f}),
+            normalize({-1.0f, -t, 0.0f}), normalize({ 1.0f, -t, 0.0f}),
+            normalize({0.0f, -1.0f,  t}), normalize({0.0f,  1.0f,  t}),
+            normalize({0.0f, -1.0f, -t}), normalize({0.0f,  1.0f, -t}),
+            normalize({ t, 0.0f, -1.0f}), normalize({ t, 0.0f,  1.0f}),
+            normalize({-t, 0.0f, -1.0f}), normalize({-t, 0.0f,  1.0f})
+        };
+
+        faces = {
+            {0, 11, 5}, {0, 5, 1}, {0, 1, 7}, {0, 7, 10}, {0, 10, 11},
+            {1, 5, 9}, {5, 11, 4}, {11, 10, 2}, {10, 7, 6}, {7, 1, 8},
+            {3, 9, 4}, {3, 4, 2}, {3, 2, 6}, {3, 6, 8}, {3, 8, 9},
+            {4, 9, 5}, {2, 4, 11}, {6, 2, 10}, {8, 6, 7}, {9, 8, 1}
+        };
+
+        const int clampedSubdivisions = std::clamp(subdivisions, 0, 6);
+        for (int i = 0; i < clampedSubdivisions; ++i) {
+            std::unordered_map<uint64_t, int> midpointCache;
+            std::vector<std::array<int, 3>> newFaces;
+            newFaces.reserve(faces.size() * 4);
+
+            auto midpoint = [&points, &midpointCache, &normalize](int a, int b) {
+                int low = std::min(a, b);
+                int high = std::max(a, b);
+                uint64_t key = (static_cast<uint64_t>(static_cast<uint32_t>(low)) << 32) |
+                               static_cast<uint32_t>(high);
+                auto it = midpointCache.find(key);
+                if (it != midpointCache.end()) {
+                    return it->second;
+                }
+
+                P3 pa = points[static_cast<size_t>(a)];
+                P3 pb = points[static_cast<size_t>(b)];
+                P3 m = normalize({(pa.x + pb.x) * 0.5f, (pa.y + pb.y) * 0.5f, (pa.z + pb.z) * 0.5f});
+                points.push_back(m);
+                int index = static_cast<int>(points.size() - 1);
+                midpointCache.emplace(key, index);
+                return index;
+            };
+
+            for (const auto& tri : faces) {
+                int a = tri[0];
+                int b = tri[1];
+                int c = tri[2];
+                int ab = midpoint(a, b);
+                int bc = midpoint(b, c);
+                int ca = midpoint(c, a);
+
+                newFaces.push_back({a, ab, ca});
+                newFaces.push_back({b, bc, ab});
+                newFaces.push_back({c, ca, bc});
+                newFaces.push_back({ab, bc, ca});
+            }
+
+            faces = std::move(newFaces);
+        }
+
+        const float radius = 0.78f;
+        std::vector<Vertex> vertices;
+        vertices.reserve(faces.size() * 3);
+        for (const auto& face : faces) {
+            for (int index : face) {
+                const P3 p = points[static_cast<size_t>(index)];
+                vertices.push_back({
+                    {radius * p.x, radius * p.y, radius * p.z},
+                    {(p.x + 1.0f) * 0.5f, (p.y + 1.0f) * 0.5f, (p.z + 1.0f) * 0.5f}
+                });
+            }
+        }
+
+        return vertices;
+    }
+
+    void uploadVerticesToGpu(const std::vector<Vertex>& vertices) {
+        if (vertices.empty()) {
+            throw std::runtime_error("mesh has no vertices");
+        }
+
+        if (vertexBuffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device, vertexBuffer, nullptr);
+            vertexBuffer = VK_NULL_HANDLE;
+        }
+        if (vertexBufferMemory != VK_NULL_HANDLE) {
+            vkFreeMemory(device, vertexBufferMemory, nullptr);
+            vertexBufferMemory = VK_NULL_HANDLE;
+        }
 
         VkDeviceSize bufferSize = sizeof(Vertex) * vertices.size();
 
@@ -1259,6 +1563,287 @@ private:
         return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
     }
 
+    uint32_t estimateTriangleCount() const {
+        if (!useSphere) {
+            return 12;
+        }
+        if (sphereGenerator == SphereGenerator::UV) {
+            const int lat = std::max(3, uvLatitudeSegments);
+            const int lon = std::max(3, uvLongitudeSegments);
+            return static_cast<uint32_t>(2 * lon * (lat - 1));
+        }
+        const int s = std::clamp(icoSubdivisions, 0, 6);
+        return static_cast<uint32_t>(20u << (2 * s));
+    }
+
+    uint32_t computeUvTriangleCount(int latitudeSegments, int longitudeSegments) const {
+        const int lat = std::max(3, latitudeSegments);
+        const int lon = std::max(3, longitudeSegments);
+        return static_cast<uint32_t>(2 * lon * (lat - 1));
+    }
+
+    uint32_t computeIcoTriangleCount(int subdivisions) const {
+        const int s = std::clamp(subdivisions, 0, 6);
+        return static_cast<uint32_t>(20u << (2 * s));
+    }
+
+    void syncTriangleBudgetFromCurrentSettings() {
+        triangleBudget = static_cast<int>(estimateTriangleCount());
+    }
+
+    void applyTriangleBudgetToGenerator(int requestedBudget) {
+        if (sphereGenerator == SphereGenerator::UV) {
+            int bestLat = uvLatitudeSegments;
+            int bestLon = uvLongitudeSegments;
+            int bestDiff = std::numeric_limits<int>::max();
+
+            for (int lat = 3; lat <= 128; ++lat) {
+                const int denom = 2 * (lat - 1);
+                if (denom <= 0) {
+                    continue;
+                }
+                int baseLon = std::clamp(requestedBudget / denom, 3, 256);
+                for (int candidateLon : {baseLon, std::min(baseLon + 1, 256)}) {
+                    const int triangles = static_cast<int>(computeUvTriangleCount(lat, candidateLon));
+                    const int diff = std::abs(triangles - requestedBudget);
+                    if (diff < bestDiff) {
+                        bestDiff = diff;
+                        bestLat = lat;
+                        bestLon = candidateLon;
+                    }
+                }
+            }
+
+            uvLatitudeSegments = bestLat;
+            uvLongitudeSegments = bestLon;
+            triangleBudget = static_cast<int>(computeUvTriangleCount(uvLatitudeSegments, uvLongitudeSegments));
+            return;
+        }
+
+        int bestSubdivision = icoSubdivisions;
+        int bestDiff = std::numeric_limits<int>::max();
+        for (int s = 0; s <= 6; ++s) {
+            const int triangles = static_cast<int>(computeIcoTriangleCount(s));
+            const int diff = std::abs(triangles - requestedBudget);
+            if (diff < bestDiff) {
+                bestDiff = diff;
+                bestSubdivision = s;
+            }
+        }
+        icoSubdivisions = bestSubdivision;
+        triangleBudget = static_cast<int>(computeIcoTriangleCount(icoSubdivisions));
+    }
+
+    void initImGui() {
+        std::array<VkDescriptorPoolSize, 11> poolSizes = {{
+            {VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
+            {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
+            {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
+            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000},
+            {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000},
+            {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000},
+            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000},
+            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
+            {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}
+        }};
+
+        VkDescriptorPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        poolInfo.maxSets = 1000 * static_cast<uint32_t>(poolSizes.size());
+        poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+        poolInfo.pPoolSizes = poolSizes.data();
+
+        if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &imguiDescriptorPool) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create ImGui descriptor pool");
+        }
+
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGui::StyleColorsDark();
+
+        ImGui_ImplGlfw_InitForVulkan(window, true);
+
+        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+        ImGui_ImplVulkan_InitInfo initInfo{};
+        initInfo.Instance = instance;
+        initInfo.PhysicalDevice = physicalDevice;
+        initInfo.Device = device;
+        initInfo.QueueFamily = indices.graphicsFamily.value();
+        initInfo.Queue = graphicsQueue;
+        initInfo.PipelineCache = VK_NULL_HANDLE;
+        initInfo.DescriptorPool = imguiDescriptorPool;
+        initInfo.RenderPass = renderPass;
+        initInfo.Subpass = 0;
+        initInfo.MinImageCount = static_cast<uint32_t>(swapChainImages.size());
+        initInfo.ImageCount = static_cast<uint32_t>(swapChainImages.size());
+        initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+        initInfo.Allocator = nullptr;
+        initInfo.CheckVkResultFn = nullptr;
+        if (!ImGui_ImplVulkan_Init(&initInfo)) {
+            throw std::runtime_error("failed to initialize ImGui Vulkan backend");
+        }
+
+        if (!ImGui_ImplVulkan_CreateFontsTexture()) {
+            throw std::runtime_error("failed to create ImGui font texture");
+        }
+        vkQueueWaitIdle(graphicsQueue);
+        imguiInitialized = true;
+    }
+
+    void shutdownImGui() {
+        if (!imguiInitialized) {
+            return;
+        }
+        vkDeviceWaitIdle(device);
+        ImGui_ImplVulkan_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
+        vkDestroyDescriptorPool(device, imguiDescriptorPool, nullptr);
+        imguiDescriptorPool = VK_NULL_HANDLE;
+        imguiInitialized = false;
+    }
+
+    void buildUi() {
+        ImGui::Begin("Scene Controls", nullptr, ImGuiWindowFlags_MenuBar);
+        if (ImGui::BeginMenuBar()) {
+            if (ImGui::BeginMenu("Object")) {
+                bool cubeSelected = !useSphere;
+                bool sphereSelected = useSphere;
+                if (ImGui::MenuItem("Cube", nullptr, cubeSelected) && useSphere) {
+                    useSphere = false;
+                    meshDirty = true;
+                    syncTriangleBudgetFromCurrentSettings();
+                }
+                if (ImGui::MenuItem("Sphere", nullptr, sphereSelected) && !useSphere) {
+                    useSphere = true;
+                    meshDirty = true;
+                    syncTriangleBudgetFromCurrentSettings();
+                }
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenuBar();
+        }
+
+        ImGui::Text("FPS: %.1f", fps);
+        ImGui::Text("Frame time: %.2f ms", frameTimeMs);
+        std::array<float, fpsHistorySize> orderedFps{};
+        for (int i = 0; i < fpsHistorySize; ++i) {
+            orderedFps[static_cast<size_t>(i)] = fpsHistory[static_cast<size_t>((fpsHistoryOffset + i) % fpsHistorySize)];
+        }
+        ImGui::PlotLines("FPS history", orderedFps.data(), fpsHistorySize, 0, nullptr, 0.0f, 240.0f, ImVec2(0.0f, 70.0f));
+        ImGui::Text("Triangles: %u", triangleCount);
+        ImGui::Text("Vertices: %u", vertexCount);
+        ImGui::Text("Target triangles: %u", estimateTriangleCount());
+        ImGui::Text("Present mode: %s", activePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR ? "Immediate (uncapped)" :
+                                         activePresentMode == VK_PRESENT_MODE_MAILBOX_KHR ? "Mailbox" :
+                                         activePresentMode == VK_PRESENT_MODE_FIFO_KHR ? "FIFO (capped)" : "Other");
+        ImGui::Separator();
+
+        int mode = runMode == RunMode::Demo ? 0 : 1;
+        if (ImGui::RadioButton("Demo mode", mode == 0) && runMode != RunMode::Demo) {
+            runMode = RunMode::Demo;
+            waitForPresentQueueIdle = true;
+            drawInstanceCount = 1;
+            benchmarkCpuCapEnabled = false;
+        }
+        if (ImGui::RadioButton("Benchmark mode", mode == 1) && runMode != RunMode::Benchmark) {
+            runMode = RunMode::Benchmark;
+            waitForPresentQueueIdle = false;
+        }
+        ImGui::Separator();
+
+        if (runMode == RunMode::Benchmark) {
+            bool changed = false;
+            bool uncappedPresent = preferImmediatePresentMode;
+            ImGui::BeginDisabled(!immediatePresentSupported);
+            if (ImGui::Checkbox("Uncapped present mode (IMMEDIATE)", &uncappedPresent) && immediatePresentSupported) {
+                preferImmediatePresentMode = uncappedPresent;
+                changed = true;
+            }
+            ImGui::EndDisabled();
+            if (!immediatePresentSupported) {
+                ImGui::TextDisabled("IMMEDIATE present mode not supported by this surface");
+            }
+            if (changed) {
+                pendingSwapchainRecreate = true;
+            }
+
+            ImGui::Checkbox("Wait for present queue idle each frame", &waitForPresentQueueIdle);
+            ImGui::Checkbox("CPU frame cap", &benchmarkCpuCapEnabled);
+            if (benchmarkCpuCapEnabled) {
+                ImGui::SliderFloat("CPU cap FPS", &benchmarkCpuCapFps, 10.0f, 240.0f, "%.0f");
+            }
+            int instances = static_cast<int>(drawInstanceCount);
+            if (ImGui::SliderInt("Instance multiplier", &instances, 1, 512)) {
+                drawInstanceCount = static_cast<uint32_t>(instances);
+            }
+            ImGui::Separator();
+        }
+
+        if (ImGui::Checkbox("Render sphere", &useSphere)) {
+            meshDirty = true;
+            syncTriangleBudgetFromCurrentSettings();
+        }
+
+        if (supportsWireframe) {
+            ImGui::Checkbox("Wireframe", &wireframeEnabled);
+        } else {
+            ImGui::TextDisabled("Wireframe: unsupported by this GPU");
+        }
+
+        if (useSphere) {
+            int generator = sphereGenerator == SphereGenerator::UV ? 0 : 1;
+            if (ImGui::RadioButton("UV Sphere", generator == 0)) {
+                generator = 0;
+                sphereGenerator = SphereGenerator::UV;
+                syncTriangleBudgetFromCurrentSettings();
+                meshDirty = true;
+            }
+            if (ImGui::RadioButton("Icosphere", generator == 1)) {
+                generator = 1;
+                sphereGenerator = SphereGenerator::Icosphere;
+                syncTriangleBudgetFromCurrentSettings();
+                meshDirty = true;
+            }
+
+            const int minBudget = sphereGenerator == SphereGenerator::UV ? static_cast<int>(computeUvTriangleCount(3, 3)) : static_cast<int>(computeIcoTriangleCount(0));
+            const int maxBudget = sphereGenerator == SphereGenerator::UV ? static_cast<int>(computeUvTriangleCount(128, 256)) : static_cast<int>(computeIcoTriangleCount(6));
+            if (ImGui::SliderInt("Triangle budget", &triangleBudget, minBudget, maxBudget)) {
+                applyTriangleBudgetToGenerator(triangleBudget);
+                meshDirty = true;
+            }
+
+            if (sphereGenerator == SphereGenerator::UV) {
+                if (ImGui::SliderInt("UV latitude segments", &uvLatitudeSegments, 3, 128)) {
+                    syncTriangleBudgetFromCurrentSettings();
+                    meshDirty = true;
+                }
+                if (ImGui::SliderInt("UV longitude segments", &uvLongitudeSegments, 3, 256)) {
+                    syncTriangleBudgetFromCurrentSettings();
+                    meshDirty = true;
+                }
+            } else {
+                if (ImGui::SliderInt("Icosphere subdivisions", &icoSubdivisions, 0, 6)) {
+                    syncTriangleBudgetFromCurrentSettings();
+                    meshDirty = true;
+                }
+            }
+        }
+
+        ImGui::Checkbox("Auto rotate", &autoRotate);
+        ImGui::SliderFloat("Rotation speed (deg/s)", &rotationSpeedDegreesPerSecond, 0.0f, 360.0f, "%.1f");
+        if (ImGui::Button("Reset rotation")) {
+            rotationX = 0.0f;
+            rotationY = 0.0f;
+            rotationZ = 0.0f;
+            autoRotationY = 0.0f;
+        }
+        ImGui::End();
+    }
+
     void createSyncObjects() {
         // Vulkan is asynchronous: the GPU may still be drawing while the CPU starts
         // preparing the next frame. Semaphores and fences coordinate queue
@@ -1283,6 +1868,11 @@ private:
         // image, records draw commands into a command buffer, submits them to the
         // graphics queue, and then presents the result. In other words, this is
         // where the CPU tells the GPU: "render the cube into this window image."
+        auto frameStart = std::chrono::steady_clock::now();
+        if (pendingSwapchainRecreate) {
+            recreateSwapChain();
+        }
+
         vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
         vkResetFences(device, 1, &inFlightFence);
 
@@ -1293,6 +1883,16 @@ private:
         }
         if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
             throw std::runtime_error("failed to acquire swap chain image");
+        }
+
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        buildUi();
+        ImGui::Render();
+
+        if (meshDirty) {
+            rebuildMeshBuffer();
         }
 
         vkResetCommandBuffer(commandBuffers[imageIndex], 0);
@@ -1319,7 +1919,11 @@ private:
 
         vkCmdBeginRenderPass(commandBuffers[imageIndex], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-        vkCmdBindPipeline(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+        VkPipeline activePipeline = graphicsPipeline;
+        if (wireframeEnabled && supportsWireframe && wireframePipeline != VK_NULL_HANDLE) {
+            activePipeline = wireframePipeline;
+        }
+        vkCmdBindPipeline(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline);
 
         VkBuffer vertexBuffers[] = { vertexBuffer };
         VkDeviceSize offsets[] = { 0 };
@@ -1341,13 +1945,14 @@ private:
 
         PushConstants push{};
         push.rotationX = rotationX;
-        push.rotationY = rotationY;
+        push.rotationY = rotationY + autoRotationY;
         push.rotationZ = rotationZ;
         push.aspect = static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height);
         push.time = time;
         vkCmdPushConstants(commandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &push);
 
-        vkCmdDraw(commandBuffers[imageIndex], vertexCount, 1, 0, 0);
+        vkCmdDraw(commandBuffers[imageIndex], vertexCount, drawInstanceCount, 0, 0);
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffers[imageIndex]);
         vkCmdEndRenderPass(commandBuffers[imageIndex]);
 
         if (vkEndCommandBuffer(commandBuffers[imageIndex]) != VK_SUCCESS) {
@@ -1386,7 +1991,18 @@ private:
             throw std::runtime_error("failed to present swap chain image");
         }
 
-        vkQueueWaitIdle(presentQueue);
+        if (waitForPresentQueueIdle) {
+            vkQueueWaitIdle(presentQueue);
+        }
+
+        if (runMode == RunMode::Benchmark && benchmarkCpuCapEnabled && benchmarkCpuCapFps > 0.0f) {
+            const auto frameEnd = std::chrono::steady_clock::now();
+            const auto elapsed = std::chrono::duration<float>(frameEnd - frameStart).count();
+            const float targetSeconds = 1.0f / benchmarkCpuCapFps;
+            if (elapsed < targetSeconds) {
+                std::this_thread::sleep_for(std::chrono::duration<float>(targetSeconds - elapsed));
+            }
+        }
     }
 
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,

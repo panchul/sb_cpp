@@ -10,6 +10,8 @@ This project is a small Vulkan + GLFW demo that renders a colorful animated 3D c
 - Depth buffer and depth testing
 - Vertex + fragment shader pipeline
 - Animated colored 3D cube
+- Optional triangulated sphere mesh (UV sphere or icosphere)
+- On-screen Dear ImGui controls for mesh and animation parameters
 - Keyboard interaction for rotation
 
 ## Controls
@@ -18,6 +20,23 @@ This project is a small Vulkan + GLFW demo that renders a colorful animated 3D c
 - `W` / `S`: rotate around the X axis
 - `Q` / `E`: rotate around the Z axis
 - `R`: reset the rotation
+
+An on-screen control panel is rendered with Dear ImGui and includes:
+
+- FPS display
+- FPS history graph
+- Frame-time display (ms)
+- Current triangle and vertex counts
+- Toggle between cube and sphere
+- Optional wireframe rendering mode (if supported by the active GPU)
+- Sphere generator radio buttons (`UV Sphere` vs `Icosphere`)
+- Triangle budget slider that auto-maps detail settings for UV sphere or icosphere
+- Live geometry detail sliders (triangle count updates in real time)
+- Auto-rotate toggle
+- Rotation speed control
+- Demo vs benchmark mode radio buttons
+- Benchmark checkboxes for uncapped present mode, queue idle wait, and CPU FPS cap
+- Benchmark instance multiplier for synthetic geometry load scaling
 
 ## Requirements
 
@@ -91,6 +110,8 @@ Each build creates a separate output directory:
 
 - `build/debug`
 - `build/release`
+
+Note: during the first configure step, CMake fetches Dear ImGui from GitHub.
 
 ## Run
 
