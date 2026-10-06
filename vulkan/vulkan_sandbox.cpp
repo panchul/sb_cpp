@@ -150,10 +150,7 @@ private:
     static constexpr const char* portabilitySubsetExtensionName = "VK_KHR_portability_subset";
     static constexpr const char* portabilityEnumerationExtensionName = "VK_KHR_portability_enumeration";
 
-    const std::vector<const char*> deviceExtensions = {
-        portabilitySubsetExtensionName,
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME
-    };
+    static constexpr const char* swapchainExtensionName = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
 
     void initWindow() {
         // GLFW creates the OS window and provides the surface we will hand to
@@ -417,36 +414,38 @@ private:
         // needed by the sample.
         QueueFamilyIndices indices = findQueueFamilies(device);
         bool extensionSupport = checkDeviceExtensionSupport(device);
-
-        VkPhysicalDeviceFeatures supportedFeatures{};
-        vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
-
-        return indices.isComplete() && extensionSupport && supportedFeatures.samplerAnisotropy;
+        return indices.isComplete() && extensionSupport;
     }
 
     bool checkDeviceExtensionSupport(VkPhysicalDevice candidate) {
         // This checks whether the selected GPU supports the extensions needed by
-        // the app, such as swapchain support and portability features.
+        // the app. Swapchain is required everywhere. Portability subset is
+        // enabled opportunistically only when the selected driver advertises it.
+        return hasDeviceExtension(candidate, swapchainExtensionName);
+    }
+
+    bool hasDeviceExtension(VkPhysicalDevice candidate, const char* extensionName) {
         uint32_t extensionCount = 0;
         vkEnumerateDeviceExtensionProperties(candidate, nullptr, &extensionCount, nullptr);
 
         std::vector<VkExtensionProperties> availableExtensions(extensionCount);
         vkEnumerateDeviceExtensionProperties(candidate, nullptr, &extensionCount, availableExtensions.data());
 
-        for (const char* extensionName : deviceExtensions) {
-            bool found = false;
-            for (const auto& extension : availableExtensions) {
-                if (strcmp(extensionName, extension.extensionName) == 0) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                return false;
+        for (const auto& extension : availableExtensions) {
+            if (strcmp(extensionName, extension.extensionName) == 0) {
+                return true;
             }
         }
 
-        return true;
+        return false;
+    }
+
+    std::vector<const char*> getRequiredDeviceExtensions(VkPhysicalDevice candidate) {
+        std::vector<const char*> extensions = { swapchainExtensionName };
+        if (hasDeviceExtension(candidate, portabilitySubsetExtensionName)) {
+            extensions.push_back(portabilitySubsetExtensionName);
+        }
+        return extensions;
     }
 
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
@@ -506,15 +505,15 @@ private:
         }
 
         VkPhysicalDeviceFeatures deviceFeatures{};
-        deviceFeatures.samplerAnisotropy = VK_TRUE;
 
         VkDeviceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
         createInfo.pQueueCreateInfos = queueCreateInfos.data();
         createInfo.pEnabledFeatures = &deviceFeatures;
-        createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-        createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+        std::vector<const char*> requiredExtensions = getRequiredDeviceExtensions(physicalDevice);
+        createInfo.enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size());
+        createInfo.ppEnabledExtensionNames = requiredExtensions.data();
         createInfo.enabledLayerCount = 0;
 
         if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {

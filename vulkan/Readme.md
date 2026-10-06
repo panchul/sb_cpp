@@ -35,14 +35,14 @@ The launch scripts automatically set the `VK_ICD_FILENAMES` and `VK_LAYER_PATH` 
 
 ### Linux
 
-On Ubuntu/Debian, install the usual Vulkan development packages:
+On Ubuntu/Debian, install the Vulkan development and runtime packages:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y build-essential cmake git libglfw3-dev libvulkan-dev glslang-tools
+sudo apt-get install -y build-essential cmake git libglfw3-dev libvulkan-dev glslang-tools vulkan-tools vulkan-validationlayers libdecor-0-plugin-1-gtk
 ```
 
-If you use another distro, install the equivalent `glfw`, `vulkan`, and `glslang` packages.
+If your distro exposes `libdecor-0-plugin-1` as a virtual package, install one concrete backend (`-gtk` or `-cairo`). If you use another distro, install the equivalent `glfw`, `vulkan`, `validation layer`, and `glslang` packages.
 
 ### Windows
 
@@ -128,6 +128,11 @@ The macOS launch scripts set the Vulkan environment variables needed for MoltenV
 - `VK_LAYER_PATH`: loads the validation layer from the Vulkan installation
 
 Linux and Windows usually do not require extra environment variables beyond the installed runtime and loader configuration.
+
+On Linux, this demo has been verified with both:
+
+- NVIDIA ICD: `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json ./run_release.sh`
+- Lavapipe software ICD fallback: `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json ./run_release.sh`
 
 The result looks like this:
 
