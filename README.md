@@ -36,7 +36,8 @@ I will gradually migrate the notes I have to this repository. To keep track of w
 
 ## Graphics
 
-** TODO **
+- opencl
+  OpenCL FFT demo that prefers a GPU, falls back to a CPU OpenCL device, and uses a host reference implementation if OpenCL is unavailable.
 
 ---
 

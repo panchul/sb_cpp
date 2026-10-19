@@ -1,0 +1,16 @@
+# Build directory
+build/
+
+# Common generated files
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+
+# Editor/OS files
+.DS_Store
+.vscode/
+.idea/
